@@ -147,7 +147,7 @@ rule translate_input_text:
         mem="40G",
         cpus_per_task=8,
         slurm_partition="gpu-troja,gpu-ms",
-        constraint="gpuram48G|gpuram40G|gpuram24G",
+        constraint="'gpuram48G|gpuram40G|gpuram24G'",
         slurm_extra="'--gres=gpu:1'",
     run:
         from transformers import pipeline
@@ -155,6 +155,8 @@ rule translate_input_text:
 
         logger = logging.getLogger("translate")
         logger.setLevel(logging.INFO)
+
+        assert torch.cuda.is_available()
 
         logger.info("Loading model.")
         pipe = pipeline(
@@ -237,7 +239,7 @@ rule project_from_eng:
         mem="40G",
         cpus_per_task=8,
         slurm_partition="gpu-troja,gpu-ms",
-        constraint="gpuram48G",
+        constraint="'gpuram48G'",
         slurm_extra="'--gres=gpu:1'",
     run:
         from constrained_translate_with_tags import (
