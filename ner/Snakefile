@@ -1,0 +1,387 @@
+import logging
+import shutil
+
+
+NLLB_CODES = {
+    "als": "deu_Latn", # MISSING
+    "amh": "amh_Ethi",
+    "aze": "azj_Latn",
+    "bam": "bam_Latn",
+    "bbj": "fra_Latn", # MISSING
+    "ewe": "ewe_Latn",
+    "fon": "fon_Latn",
+    "hau": "hau_Latn",
+    'ibo': "ibo_Latn",
+    'kin': "kin_Latn",
+    'lug': "lug_Latn",
+    'luo': "luo_Latn",
+    'mos': "mos_Latn",
+    'nya': "nya_Latn",
+    'pcm': "eng_Latn", # MISSING
+    'spa': "spa_Latn",
+    'sna': "sna_Latn",
+    'swa': "swh_Latn",
+    'tha': "tha_Thai",
+    'tsn': "tsn_Latn",
+    "tur": "tur_Latn",
+    'twi': "twi_Latn",
+    'wol': "wol_Latn",
+    'xho': "xho_Latn",
+    'yor': "yor_Latn",
+    'zho': "zho_Hans",
+    'zul': "zul_Latn",
+}
+
+SHARED_TASK_2023_VAL_LANGS = {
+    "als": "ALS", "aze": "AZ", "tur": "TR", "yor": "YO"
+}
+
+
+ENTS = ["PER", "ORG", "LOC", "DATE"]
+
+TAG_LIST = [
+    "O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-DATE",
+    "I-DATE"]
+
+SPACY_TYPES = ["PERSON", "ORG", "LOC", "DATE", "GPE", "TIME"]
+
+
+rule all:
+    input:
+        expand("task_experiments/spacy/{lang}/{split}.eng-tags",
+               lang=SHARED_TASK_2023_VAL_LANGS.keys(),
+               split=["validation", "test"]),
+
+
+localrules: prepare_submission_conll, output_as_conll, download_test, download_2023_validation
+
+rule download_2023_validation:
+    output:
+        directory("task_data/MRL_ST_2023_Val")
+    shell:
+        """
+        mkdir -p task_data/
+        cd task_data
+        gdown -c --folder https://drive.google.com/drive/folders/15exVuU06dfbUWQtvSkRpA4JG4sxzgVli?usp=share_link
+        """
+
+
+rule download_test:
+    output:
+        directory("task_data/MRL_ST_2023_Test")
+    shell:
+        """
+        mkdir -p task_data/
+        cd task_data
+        gdown --folder https://drive.google.com/drive/folders/1nkvzy7BLyFueANniAT9M5o0_-EnMy0Gc?usp=share_link -O MRL_ST_2023_Test
+        """
+
+
+rule format_shared_task_conll:
+    input:
+        raw_val_data_dir="task_data/MRL_ST_2023_Val",
+        raw_test_data_dir="task_data/MRL_ST_2023_Test",
+    output:
+        text_file="task_data/{lang}/{split}.txt",
+        tags_file="task_data/{lang}/{split}.tags",
+        conll_file="task_data/{lang}/{split}.conll"
+    wildcard_constraints:
+        lang="|".join(list(SHARED_TASK_2023_VAL_LANGS.keys())),
+    run:
+        logger = logging.getLogger("format_shared_task_conll")
+        logger.setLevel(logging.INFO)
+
+        if wildcards.split == "validation":
+            raw_split = "Val"
+            data_dir  = input.raw_val_data_dir
+        elif wildcards.split == "test":
+            raw_split = "Test"
+            data_dir  = input.raw_test_data_dir
+        else:
+            raise ValueError("Unknown split: {}".format(split))
+
+        raw_file = os.path.join(
+            data_dir,
+            f"NER_{SHARED_TASK_2023_VAL_LANGS[wildcards.lang]}_{raw_split}.conll")
+
+        logger.info("Copying CoNLL file: %s", raw_file)
+        shutil.copy(raw_file, output.conll_file)
+
+        logger.info("Reading CoNLL file: %s", raw_file)
+
+        f_conll = open(raw_file, encoding="utf-8")
+        f_text = open(output.text_file, "w")
+        f_tags = open(output.tags_file, "w")
+
+        sentence = []
+        tags = []
+
+        def print_sentence():
+            print(" ".join(sentence), file=f_text)
+            if wildcards.split == "validation":
+                print(" ".join(tags), file=f_tags)
+
+        f_conll.readline()
+        for line in f_conll:
+            line = line.strip()
+            if not line:
+                print_sentence()
+                sentence = []
+                tags = []
+                continue
+            fields = line.split(" ")
+            sentence.append(fields[0])
+            if wildcards.split == "validation":
+                tags.append(fields[-1])
+        if sentence:
+            print_sentence()
+        logger.info("Done.")
+
+
+rule translate_input_text:
+    input:
+        src_text="{dataset}_data/{lang}/{split}.txt"
+    output:
+        tgt_text=protected("{dataset}_data/{lang}/{split}.eng")
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        constraint="gpuram48G|gpuram40G|gpuram24G",
+        slurm_extra="'--gres=gpu:1'",
+    run:
+        from transformers import pipeline
+        import torch
+
+        logger = logging.getLogger("translate")
+        logger.setLevel(logging.INFO)
+
+        logger.info("Loading model.")
+        pipe = pipeline(
+            "translation", model="facebook/nllb-200-3.3B", device=0,
+            max_length=512)
+        logger.info("Model loaded. Loading source text.")
+        with open(input.src_text) as f:
+            src_text = f.readlines()
+        logger.info("Source text loaded. Translating.")
+        translation = pipe(
+            src_text,
+            src_lang=NLLB_CODES[wildcards.lang],
+            tgt_lang="eng_Latn")
+        logger.info("Translation done. Writing to file.")
+        with open(output.tgt_text, "w") as f:
+            for line in translation:
+                print(line['translation_text'], file=f)
+        logger.info("Done.")
+
+
+rule ner_with_spacy:
+    input:
+        "{dataset}_data/{lang}/{split}.eng"
+    output:
+        retokenized="{dataset}_experiments/spacy/{lang}/{split}-retok.eng",
+        tags="{dataset}_experiments/spacy/{lang}/{split}.eng-tags",
+    resources:
+        mem="10G",
+        cpus_per_task=4,
+    run:
+        import spacy
+        logger = logging.getLogger("spacy")
+        logger.setLevel(logging.INFO)
+
+        logger.info("Loading model.")
+        try:
+            nlp = spacy.load("en_core_web_lg")
+        except OSError:
+            logger.info("Model not found. Downloading.")
+            spacy.cli.download("en_core_web_lg")
+            nlp = spacy.load("en_core_web_lg")
+
+        logger.info("Model loaded. Processing input.")
+        f_retokenized = open(output.retokenized, "w")
+        f_tags = open(output.tags, "w")
+        for line in open(input[0]):
+            doc = nlp(line.strip())
+            tokens = []
+            tags = []
+            for token in doc:
+                tokens.append(token.text)
+                if token.ent_iob_ == "O" or token.ent_type_ not in SPACY_TYPES:
+                    tags.append("O")
+                else:
+                    ent_type = token.ent_type_
+                    if ent_type == "PERSON":
+                        ent_type = "PER"
+                    elif ent_type == "GPE":
+                        ent_type = "LOC"
+                    elif ent_type == "TIME":
+                        ent_type = "DATE"
+                    elif ent_type == "FAC":
+                        ent_type = "LOC"
+                    tags.append(token.ent_iob_ + "-" + ent_type)
+            print(" ".join(tokens), file=f_retokenized)
+            print(" ".join(tags), file=f_tags)
+        f_retokenized.close()
+        f_tags.close()
+        logger.info("Done.")
+
+
+rule project_from_eng:
+    input:
+        retokenized="{dataset}_experiments/{experiment}/{lang}/{split}-retok.eng",
+        tags="{dataset}_experiments/{experiment}/{lang}/{split}.eng-tags",
+        target_text="{dataset}_data/{lang}/{split}.txt",
+    output:
+        "{dataset}_experiments/{experiment}/{lang}/{split}.orig-tags"
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        constraint="gpuram48G",
+        slurm_extra="'--gres=gpu:1'",
+    run:
+        from constrained_translate_with_tags import (
+            project_markup, read_entities, format_entities)
+
+        with open(input.retokenized) as f_retok:
+            retokenized = f_retok.read().splitlines()
+        with open(input.tags) as f_tags:
+            eng_entities = read_entities(f_tags.read().splitlines())
+        with open(input.target_text) as f_tgt:
+            tgt_sentences = f_tgt.read().splitlines()
+
+        projected_entities = project_markup(
+            retokenized, eng_entities, tgt_sentences,
+            tgt_lang=NLLB_CODES[wildcards.lang],
+            model="ychenNLP/nllb-200-3.3B-easyproject",
+            batch_size=8,
+            max_span_len=5)
+
+        tags = format_entities(tgt_sentences, projected_entities)
+
+        with open(output[0], "w") as f:
+            for line in tags:
+                print(" ".join(line), file=f)
+
+
+rule retokenize_english:
+    input:
+        "{dataset}/{lang}/{split}.eng"
+    output:
+        "{dataset}/{lang}/{split}.eng-retok"
+    resources:
+        mem="10G",
+        cpus_per_task=4,
+    shell:
+        """
+        sacremoses -l en -j 4 tokenize --xml-escape < {input} > {output}
+        """
+
+
+rule project_orig_to_eng:
+    input:
+        orig_text="{dataset}/{lang}/{split}.txt",
+        tags="{dataset}/{lang}/{split}.tags",
+        english="{dataset}/{lang}/{split}.eng-retok"
+    output:
+        protected("{dataset}/{lang}/{split}.eng-tags")
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        partition="gpu-troja,gpu-ms",
+        flags="--gres=gpu:1 --constraint='gpuram48G'"
+    run:
+        from constrained_translate_with_tags import (
+            project_markup, read_entities, format_entities)
+
+        with open(input.orig_text) as f_orig:
+            orig_lines = f_orig.read().splitlines()
+        with open(input.tags) as f_tags:
+            entities = read_entities(f_tags.read().splitlines())
+        with open(input.english) as f_eng:
+            eng_lines = f_eng.read().splitlines()
+
+        projected_entities = project_markup(
+            orig_lines, entities, eng_lines,
+            src_lang=NLLB_CODES[wildcards.lang],
+            tgt_lang="eng_Latn",
+            model="ychenNLP/nllb-200-3.3B-easyproject",
+            batch_size=8,
+            max_span_len=5)
+
+        projected_tags = format_entities(eng_lines, projected_entities)
+
+        with open(input.english, "r") as f_eng, \
+            open(output[0], "w") as f_out:
+            for eng_line, tags in zip(f_eng, projected_tags):
+                print(f"{eng_line.strip()}\t{' '.join(tags)}", file=f_out)
+
+
+rule evaluate_ner:
+    input:
+        system_output="{dataset}_experiments/{experiment}/{lang}/{split}.orig-tags",
+        gold_standard="{dataset}_data/{lang}/{split}.tags",
+    output:
+        score="{dataset}_experiments/{experiment}/{lang}/{split}.score",
+        report="{dataset}_experiments/{experiment}/{lang}/{split}.report"
+    run:
+        import evaluate
+        import json
+        metric = evaluate.load("seqeval")
+
+        with open(input.system_output) as f:
+            outputs = [line.strip().split() for line in f]
+        with open(input.gold_standard) as f:
+            golds = [line.strip().split() for line in f]
+
+        score = metric.compute(predictions=outputs, references=golds)
+        for ent in ENTS:
+            score[ent]["number"] = int(score[ent]["number"])
+
+        with open(output.report, "w") as f:
+            print(json.dumps(score, indent=4), file=f)
+        with open(output.score, "w") as f:
+            print(score['overall_f1'], file=f)
+
+
+rule output_as_conll:
+    input:
+        orig_conll="task_data/{lang}/{split}.conll",
+        tags="task_experiments/{method}/{lang}/{split}.orig-tags",
+    output:
+        "task_experiments/{method}/{lang}/{split}.conll"
+    run:
+        f_tags = open(input.tags, encoding="utf-8")
+        f_orig = open(input.orig_conll, encoding="utf-8")
+        f_out = open(output[0], "w", encoding="utf-8")
+
+        conll_line = None
+        for line in f_tags:
+            tags = line.strip().split()
+            conll_line = f_orig.readline().strip()
+            while not conll_line or conll_line.startswith("#") or "DOCSTART" in conll_line:
+                print(conll_line, file=f_out)
+                conll_line = f_orig.readline().strip()
+            for tag in tags:
+                fields = conll_line.split()[:3]
+                assert len(fields) == 3
+                print(" ".join(fields + [tag]), file=f_out)
+                conll_line = f_orig.readline().strip()
+            print(file=f_out)
+
+        f_tags.close()
+        f_orig.close()
+        f_out.close()
+
+
+rule prepare_submission_conll:
+    input:
+        lambda wildcards: "task_experiments/tner-ontonotes5/{lang3}/test.conll".format(
+            lang3=next(key for key, value in SHARED_TASK_TEST_LANGS.items() if value == wildcards.tasklang))
+    output:
+        "submission/CUNI_NER_{tasklang}_Test.conll"
+    shell:
+        """
+        mkdir -p submission
+        cp "{input}" "{output}"
+        """

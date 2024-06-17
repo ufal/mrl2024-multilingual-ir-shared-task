@@ -1,0 +1,6 @@
+snakemake
+snakemake-executor-plugin-slurm
+gdown
+transformers
+torch
+spacy
