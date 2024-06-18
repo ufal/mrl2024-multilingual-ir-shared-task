@@ -4,3 +4,4 @@ gdown
 transformers
 torch
 spacy
+evaluate
