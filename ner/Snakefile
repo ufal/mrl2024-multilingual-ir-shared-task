@@ -228,6 +228,46 @@ rule ner_with_spacy:
         logger.info("Done.")
 
 
+rule ner_with_gliner_eng:
+    input:
+        "{dataset}_data/{lang}/{split}.eng"
+    output:
+        retokenized="{dataset}_experiments/gliner-eng/{lang}/{split}-retok.eng",
+        tags="{dataset}_experiments/gliner-eng/{lang}/{split}.eng-tags",
+    resources:
+        mem="10G",
+        cpus_per_task=4,
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="'--gres=gpu:1'",
+    run:
+        from ner_with_gliner import run_gliner
+
+        shutil.copy(input[0], output.retokenized)
+
+        with open(input[0]) as f_in, open(output.tags, "w") as f_out:
+            run_gliner(f_in, f_out, "urchade/gliner_large-v2.1")
+
+
+rule ner_with_gliner_multi:
+    input:
+        "{dataset}_data/{lang}/{split}.txt"
+    output:
+        tags="{dataset}_experiments/gliner-multi/{lang}/{split}.tags",
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="'--gres=gpu:1'",
+    run:
+        from ner_with_gliner import run_gliner
+
+        with open(input[0]) as f_in, open(output.tags, "w") as f_out:
+            run_gliner(f_in, f_out, "urchade/gliner_multi-v2.1")
+
+
 rule project_from_eng:
     input:
         retokenized="{dataset}_experiments/{experiment}/{lang}/{split}-retok.eng",
