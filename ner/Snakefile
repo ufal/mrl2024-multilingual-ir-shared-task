@@ -255,7 +255,7 @@ rule ner_with_gliner_multi:
     input:
         "{dataset}_data/{lang}/{split}.txt"
     output:
-        tags="{dataset}_experiments/gliner-multi/{lang}/{split}.tags",
+        tags="{dataset}_experiments/gliner-multi/{lang}/{split}.orig-tags",
     resources:
         mem="40G",
         cpus_per_task=8,

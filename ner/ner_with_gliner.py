@@ -6,9 +6,9 @@ logging.basicConfig(
     format="%(asctime)s: %(message)s", level=logging.INFO)
 
 
-def run_gliner(f_input, f_output):
+def run_gliner(f_input, f_output, gliner_model_path):
     logging.info("Loading the GLiNER model.")
-    model = GLiNER.from_pretrained("urchade/gliner_largev2")
+    model = GLiNER.from_pretrained(gliner_model_path)
     labels = ["person", "organization", "location", "date"]
     for line in f_input:
         line = line.strip()
