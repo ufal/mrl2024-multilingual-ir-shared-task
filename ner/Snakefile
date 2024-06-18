@@ -48,9 +48,10 @@ SPACY_TYPES = ["PERSON", "ORG", "LOC", "DATE", "GPE", "TIME"]
 
 rule all:
     input:
-        expand("task_experiments/spacy/{lang}/{split}.eng-tags",
+        expand("task_experiments/{method}/{lang}/{split}.score",
                lang=SHARED_TASK_2023_VAL_LANGS.keys(),
-               split=["validation", "test"]),
+               split=["validation"],
+               method=["spacy", "gliner-eng", "gliner-multi"]),
 
 
 localrules: prepare_submission_conll, output_as_conll, download_test, download_2023_validation
