@@ -280,45 +280,6 @@ rule retokenize_english:
         """
 
 
-rule project_orig_to_eng:
-    input:
-        orig_text="{dataset}/{lang}/{split}.txt",
-        tags="{dataset}/{lang}/{split}.tags",
-        english="{dataset}/{lang}/{split}.eng-retok"
-    output:
-        protected("{dataset}/{lang}/{split}.eng-tags")
-    resources:
-        mem="40G",
-        cpus_per_task=8,
-        partition="gpu-troja,gpu-ms",
-        flags="--gres=gpu:1 --constraint='gpuram48G'"
-    run:
-        from constrained_translate_with_tags import (
-            project_markup, read_entities, format_entities)
-
-        with open(input.orig_text) as f_orig:
-            orig_lines = f_orig.read().splitlines()
-        with open(input.tags) as f_tags:
-            entities = read_entities(f_tags.read().splitlines())
-        with open(input.english) as f_eng:
-            eng_lines = f_eng.read().splitlines()
-
-        projected_entities = project_markup(
-            orig_lines, entities, eng_lines,
-            src_lang=NLLB_CODES[wildcards.lang],
-            tgt_lang="eng_Latn",
-            model="ychenNLP/nllb-200-3.3B-easyproject",
-            batch_size=8,
-            max_span_len=5)
-
-        projected_tags = format_entities(eng_lines, projected_entities)
-
-        with open(input.english, "r") as f_eng, \
-            open(output[0], "w") as f_out:
-            for eng_line, tags in zip(f_eng, projected_tags):
-                print(f"{eng_line.strip()}\t{' '.join(tags)}", file=f_out)
-
-
 rule evaluate_ner:
     input:
         system_output="{dataset}_experiments/{experiment}/{lang}/{split}.orig-tags",
