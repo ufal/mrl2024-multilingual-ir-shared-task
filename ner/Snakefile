@@ -51,7 +51,7 @@ rule all:
         expand("task_experiments/{method}/{lang}/{split}.score",
                lang=SHARED_TASK_2023_VAL_LANGS.keys(),
                split=["validation"],
-               method=["spacy", "gliner-eng", "gliner-multi"]),
+               method=["spacy", "gliner-eng", "gliner-multi", "gliner-multi-tuned"])
 
 
 localrules: prepare_submission_conll, output_as_conll, download_test, download_2023_validation
@@ -227,6 +227,47 @@ rule ner_with_spacy:
         f_retokenized.close()
         f_tags.close()
         logger.info("Done.")
+
+
+rule tune_gliner_multi:
+    output:
+        model_path="{dataset}_experiments/gliner-multi-tuned/tuned.log",
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="'--gres=gpu:1'",
+        gpu=1,
+    run:
+        from collect_data import collect_data
+        from ner_with_gliner import tune_gliner
+
+        train_data = collect_data("all", "train")
+        dev_data = collect_data("all", "dev")
+        model_path = output.model_path
+        tune_gliner(train_data, dev_data, "urchade/gliner_multi-v2.1", model_path)
+
+        with open(model_path, "w") as f:
+            print("Done.", file=f)
+
+
+rule eval_tuned_gliner:
+    input:
+        model_path="{dataset}_experiments/gliner-multi-tuned/tuned.log",
+        data="{dataset}_data/{lang}/{split}.txt"
+    output:
+        tags="{dataset}_experiments/gliner-multi-tuned/{lang}/{split}.orig-tags",
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="'--gres=gpu:1'",
+        gpu=1,
+    run:
+        from ner_with_gliner import run_gliner
+
+        with open(input.data) as f_in,open(output.tags,"w") as f_out:
+            run_gliner(f_in,f_out,os.path.basename(input.model_path))
 
 
 rule ner_with_gliner_eng:
