@@ -128,14 +128,17 @@ def run_gliner(f_input, f_output, gliner_model_path):
     logging.info("Loading the GLiNER model.")
     model = GLiNER.from_pretrained(gliner_model_path)
     labels = ["person", "organization", "location", "date"]
-    for line in f_input:
+    logging.info("Model loaded, processing the input file.")
+    for l_no, line in enumerate(f_input):
         line = line.strip()
+        line = " ".join(line.split())
 
         # Get token starts and ends
         token_starts = [0]
         for pos, char in enumerate(line):
             if char == " ":
                 token_starts.append(pos + 1)
+        assert len(token_starts) == len(line.split())
         tags = ["O"] * len(line.split())
 
         # Predict entities
@@ -176,4 +179,8 @@ def run_gliner(f_input, f_output, gliner_model_path):
             tags[token_start_idx] = "B-" + tag
             for idx in range(token_start_idx + 1, token_end_idx):
                 tags[idx] = "I-" + tag
+
+        if l_no % 10 == 9:
+            logging.info(f"Processed {l_no + 1} lines.")
         print(" ".join(tags), file=f_output)
+    logging.info("GliNER processing finished.")
