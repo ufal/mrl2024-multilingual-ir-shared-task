@@ -273,13 +273,10 @@ rule eval_tuned_gliner:
 
 rule ner_with_gliner_eng:
     input:
-        "{dataset}_data/{lang}/{split}.eng"
+        "{dataset}_data/{lang}/{split}.eng-retok"
     output:
-        retokenized="{dataset}_experiments/gliner-eng/{lang}/{split}-retok.eng",
         tags="{dataset}_experiments/gliner-eng/{lang}/{split}.eng-tags",
-    resources:
-        mem="10G",
-        cpus_per_task=4,
+        retokenized="{dataset}_experiments/gliner-eng/{lang}/{split}-retok.eng",
     resources:
         mem="40G",
         cpus_per_task=8,
