@@ -37,6 +37,7 @@ SHARED_TASK_2023_VAL_LANGS = {
     "als": "ALS", "aze": "AZ", "tur": "TR", "yor": "YO"
 }
 
+SHARED_TASK_2024_VAL_LANGS = SHARED_TASK_2023_VAL_LANGS
 
 ENTS = ["PER", "ORG", "LOC", "DATE"]
 
@@ -49,46 +50,57 @@ SPACY_TYPES = ["PERSON", "ORG", "LOC", "DATE", "GPE", "TIME"]
 
 rule all:
     input:
-        expand("task_experiments/{method}/{lang}/{split}.score",
-               lang=SHARED_TASK_2023_VAL_LANGS.keys(),
+        expand("task_2024_experiments/{method}/{lang}/{split}.score",
+               lang=SHARED_TASK_2024_VAL_LANGS.keys(),
                split=["validation"],
-               method=["spacy", "gliner-eng", "gliner-multi", "gliner-multi-tuned"])
+               method=["spacy", "gliner-eng", "gliner-multi"]) #, "gliner-multi-tuned"])
 
 
-localrules: prepare_submission_conll, output_as_conll, download_test, download_2023_validation
+localrules: prepare_submission_conll, output_as_conll, download_test, download_2023_validation, download_2024_validation
 
 rule download_2023_validation:
     output:
-        directory("task_data/MRL_ST_2023_Val")
+        directory("task_2023_data/MRL_ST_2023_Val")
     shell:
         """
-        mkdir -p task_data/
-        cd task_data
+        mkdir -p task_2023_data/
+        cd task_2023_data
         gdown -c --folder https://drive.google.com/drive/folders/15exVuU06dfbUWQtvSkRpA4JG4sxzgVli?usp=share_link
         """
 
 
-rule download_test:
+rule download_2023_test:
     output:
-        directory("task_data/MRL_ST_2023_Test")
+        directory("task_2023_data/MRL_ST_2023_Test")
     shell:
         """
-        mkdir -p task_data/
-        cd task_data
+        mkdir -p task_2023_data/
+        cd task_2023_data
         gdown --folder https://drive.google.com/drive/folders/1nkvzy7BLyFueANniAT9M5o0_-EnMy0Gc?usp=share_link -O MRL_ST_2023_Test
+        """
+
+
+rule download_2024_validation:
+    output:
+        directory("task_2024_data/MRL_ST_2024_Val")
+    shell:
+        """
+        mkdir -p task_2024_data/
+        cd task_2024_data
+        gdown -c --folder https://drive.google.com/drive/folders/13b8f_2KAlYav9kcTne59NQzipvSgbaPe?usp=drive_link -O MRL_ST_2024_Val
         """
 
 
 rule format_shared_task_conll:
     input:
-        raw_val_data_dir="task_data/MRL_ST_2023_Val",
-        raw_test_data_dir="task_data/MRL_ST_2023_Test",
+        raw_val_data_dir="task_{year}_data/MRL_ST_{year}_Val",
+        #raw_test_data_dir="task_{year}_data/MRL_ST_{year}_Test",
     output:
-        text_file="task_data/{lang}/{split}.txt",
-        tags_file="task_data/{lang}/{split}.tags",
-        conll_file="task_data/{lang}/{split}.conll"
+        text_file="task_{year}_data/{lang}/{split}.txt",
+        tags_file="task_{year}_data/{lang}/{split}.tags",
+        conll_file="task_{year}_data/{lang}/{split}.conll"
     wildcard_constraints:
-        lang="|".join(list(SHARED_TASK_2023_VAL_LANGS.keys())),
+        lang="|".join(list(SHARED_TASK_2024_VAL_LANGS.keys())),
     run:
         logger = logging.getLogger("format_shared_task_conll")
         logger.setLevel(logging.INFO)
@@ -104,7 +116,7 @@ rule format_shared_task_conll:
 
         raw_file = os.path.join(
             data_dir,
-            f"NER_{SHARED_TASK_2023_VAL_LANGS[wildcards.lang]}_{raw_split}.conll")
+            f"NER_{SHARED_TASK_2024_VAL_LANGS[wildcards.lang]}_{raw_split}.conll")
 
         logger.info("Copying CoNLL file: %s", raw_file)
         shutil.copy(raw_file, output.conll_file)
@@ -428,10 +440,10 @@ rule evaluate_ner:
 
 rule output_as_conll:
     input:
-        orig_conll="task_data/{lang}/{split}.conll",
-        tags="task_experiments/{method}/{lang}/{split}.orig-tags",
+        orig_conll="task_{year}_data/{lang}/{split}.conll",
+        tags="task_{year}_experiments/{method}/{lang}/{split}.orig-tags",
     output:
-        "task_experiments/{method}/{lang}/{split}.conll"
+        "task_{year}_experiments/{method}/{lang}/{split}.conll"
     run:
         f_tags = open(input.tags, encoding="utf-8")
         f_orig = open(input.orig_conll, encoding="utf-8")
