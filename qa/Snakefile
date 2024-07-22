@@ -1,0 +1,154 @@
+import logging
+from transformers import pipeline
+import pandas as pd
+import glob
+import shutil
+import csv
+
+QA_LANGUAGES = ["ALS", "AZE", "DEU", "ENG", "IBO", "IND", "TUR", "UZB", "YOR"]
+
+NLLB_CODES = {
+    "ENG": "eng_Latn",
+    "IND": "ind_Latn",
+    "ALS": "deu_Latn",
+    "DEU": "deu_Latn",
+    "AZE": "azj_Latn",
+    "TUR": "tur_Latn",
+    "UZB": "uzn_Latn",
+    "YOR": "yor_Latn",
+    "IBO": "ibo_Latn"
+}
+
+MRL_CODES = {
+    "ALS": "ALS",
+    "AZ": "AZE",
+    "IG": "IBO",
+    "TR": "TUR",
+    "YO": "YOR"
+}
+
+MRL_CODES_INV = {
+    "ALS": "ALS",
+    "AZE": "AZ",
+    "IBO": "IG",
+    "TUR": "TR",
+    "YOR": "YO"
+}
+
+def mt_data(*args):
+    original = glob.glob("data/*")
+    mt = [i.replace("data/", "data_mt/") for i in original]
+    return mt
+
+def translate(pipeline, texts, src):
+    translation = pipeline(
+        texts,
+        src_lang=src,
+        tgt_lang="eng_Latn",
+        max_length=1024)
+    return [i["translation_text"] for i in translation]
+
+# Done: afrimmlu, mrl, naija_rc, labeled_multiple_choice, belebele, exams, m_mmlu, mmlu_tr, mmlu
+rule all:
+    input:
+        "data_mt/mrl.ALS.val.tsv",
+        "data_mt/mrl.AZE.val.tsv",
+        "data_mt/mrl.IBO.val.tsv",
+        "data_mt/mrl.TUR.val.tsv",
+        "data_mt/mrl.YOR.val.tsv",
+        # "data_mt/mmlu_tr.TUR.dev.tsv", #
+        # "data_mt/mmlu_tr.TUR.test.tsv",
+        # "data_mt/mmlu_tr.TUR.validation.tsv",
+        
+        # "data_mt/mmlu.ENG.auxiliary_train.tsv",
+        # "data_mt/mmlu.ENG.dev.tsv",
+        # "data_mt/mmlu.ENG.test.tsv",
+        # "data_mt/mmlu.ENG.validation.tsv",
+
+        # "data_mt/m_mmlu.IND.test.tsv",
+        # "data_mt/m_mmlu.IND.train.tsv",
+        # "data_mt/m_mmlu.IND.val.tsv",
+        
+        # "data_mt/belebele.ALS.test.tsv",
+        # "data_mt/belebele.DEU.test.tsv",
+        # "data_mt/belebele.IBO.test.tsv",
+        # "data_mt/belebele.IND.test.tsv",
+        # "data_mt/belebele.TUR.test.tsv",
+        # "data_mt/belebele.UZB.test.tsv",
+        # "data_mt/belebele.YOR.test.tsv",
+        # "data_mt/belebele.ENG.test.tsv",
+
+        # "data_mt/labeled_multiple_choice.ENG.train.tsv",
+
+        # "data_mt/afrimmlu.IBO.dev.tsv",
+        # "data_mt/afrimmlu.IBO.test.tsv",
+        # "data_mt/afrimmlu.IBO.validation.tsv",
+        # "data_mt/afrimmlu.YOR.dev.tsv",
+        # "data_mt/afrimmlu.YOR.test.tsv",
+        # "data_mt/afrimmlu.YOR.validation.tsv",
+
+        # "data_mt/exams.TUR.train.tsv",
+        # "data_mt/exams.TUR.validation.tsv",
+           
+        # "data_mt/naija_rc.IBO.test.tsv",
+        # "data_mt/naija_rc.YOR.test.tsv",
+
+rule translate_data:
+    input:
+        src_text="data/{dataset}.{lang}.{split}.tsv"
+    output:
+        tgt_text="data_mt/{dataset}.{lang}.{split}.tsv"
+    resources:
+        mem_mb=40_000,
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="--gres=gpu:1 --constraint='gpuram24G|gpuram40G|gpuram48G'"
+    run:
+        if wildcards.lang == "ENG":
+            shutil.copy(input.src_text, output.tgt_text)
+        elif wildcards.dataset == "mrl":
+            # Use the original data
+            in_name = f"val_labeled/val_labeled_MC_{MRL_CODES_INV[wildcards.lang]}.csv"
+            df = pd.read_csv(in_name, na_values=()).fillna("")
+            columns = ["text", "question", "A", "B", "C", "D"]
+            data = {}      
+            pipe = pipeline("translation", model="facebook/nllb-200-3.3B", device=0)    
+            for col in columns:
+                text = df[col].tolist()                            
+                data[col] = translate(pipe, text, NLLB_CODES[wildcards.lang])
+            
+            data["label"] = df["label"].tolist()
+            data = pd.DataFrame(data)
+            data["question"] = data["text"] + " " + data["question"]
+            new_columns = ["question", "A", "B", "C", "D", "label"]
+            data = data[new_columns]            
+            data.to_csv(output.tgt_text, "\t", header=True, index=False)            
+        else:        
+            pipe = pipeline("translation", model="facebook/nllb-200-3.3B", device=0)
+            # Columns: question, A, B, C, D, label
+            # "None" is a valid answer
+            df = pd.read_csv(input.src_text, delimiter="\t", na_values=()).fillna("")
+
+            columns = ["question", "A", "B", "C", "D"]
+            data = {}
+            for col in columns:
+                text = df[col].tolist()                            
+                data[col] = translate(pipe, text, NLLB_CODES[wildcards.lang])
+            data["label"] = df["label"].tolist()
+
+            data = pd.DataFrame(data)
+            data.to_csv(output.tgt_text, "\t", header=True, index=False)
+
+rule prepare_mrl:
+    output:
+        "data/mrl.{lang}.val.tsv"
+    run:
+        in_name = f"val_labeled/val_labeled_MC_{MRL_CODES_INV[wildcards.lang]}.csv"
+        df = pd.read_csv(in_name, na_values=()).fillna("")
+        with open(output[0], 'w', newline='') as csvfile:
+            fields = ["question", "A", "B", "C", "D", "label"]
+            writer = csv.writer(csvfile, delimiter='\t')
+            writer.writerow(fields)
+            for i in df.iloc:
+                writer.writerow((i["text"] + " " + i["question"], i["A"], i["B"], i["C"], i["D"], i["label"]))
+        

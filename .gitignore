@@ -1,5 +1,7 @@
 **/.snakemake
 ner/task_202*
+qa/data*
+qa/val_labeled*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
