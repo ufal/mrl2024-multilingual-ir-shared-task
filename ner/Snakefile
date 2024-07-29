@@ -56,7 +56,7 @@ rule all:
                method=["spacy", "gliner-eng", "gliner-multi"]) #, "gliner-multi-tuned"])
 
 
-localrules: prepare_submission_conll, output_as_conll, download_test, download_2023_validation, download_2024_validation
+localrules: prepare_submission_conll, output_as_conll, download_2023_validation, download_2024_validation
 
 rule download_2023_validation:
     output:
@@ -320,6 +320,77 @@ rule ner_with_gliner_multi:
             run_gliner(f_in, f_out, "urchade/gliner_multi-v2.1")
 
 
+rule ner_with_uner:
+    input:
+        "{dataset}_data/{lang}/{split}.txt"
+    output:
+        tags="{dataset}_experiments/uner/{lang}/{split}.orig-tags",
+    resources:
+        mem="10G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="'--gres=gpu:1'",
+    run:
+        from transformers import pipeline
+        classifier = pipeline("ner", model="universalner/uner_all")
+
+        with open(input[0]) as f_in, open(output.tags, "w") as f_out:
+            for line in f_in:
+                line = line.strip()
+                line = " ".join(line.split())
+
+                entities = classifier(line)
+                token_starts = [0]
+                for pos, char in enumerate(line):
+                    if char == " ":
+                        token_starts.append(pos + 1)
+                assert len(token_starts) == len(line.split())
+                tags = ["O"] * len(line.split())
+
+                current_tag_start = None
+                current_tag_end = None
+                current_entity_type = None
+
+                def resolve_entity():
+                    token_start_idx = None
+                    for idx, start in enumerate(token_starts):
+                        if start >= current_tag_start:
+                            token_start_idx = idx
+                            break
+                    if token_end_idx is None:
+                        token_end_idx = len(token_starts)
+                    token_end_idx = None
+                    for idx, start in enumerate(token_starts):
+                        if start >= current_tag_end:
+                            token_end_idx = idx
+                            break
+                    if token_end_idx is None:
+                        token_end_idx = len(token_starts)
+                    for idx in range(token_start_idx, token_end_idx):
+                        if idx == token_start_idx:
+                            tags[idx] = "B-" + current_entity_type
+                        else:
+                            tags[idx] = "I-" + current_entity_type
+
+                for entity in entities:
+                    tag, tag_type = entity["entity"].split("-")
+                    if tag == "B":
+                        if current_tag_start is not None:
+                            resolve_entity()
+                        current_entity_type = tag_type
+                        current_tag_start = entity["start"]
+                        current_tag_end = entity["end"]
+                    elif tag == "I":
+                        current_tag_end = entity["end"]
+                    else:
+                        raise ValueError(f"Unexpected tag: {tag}")
+
+                if current_tag_start is not None:
+                    resolve_entity()
+                    
+                print(" ".join(tags), file=f_out)
+
+
 rule project_from_eng:
     input:
         retokenized="{dataset}_experiments/{experiment}/{lang}/{split}-retok.eng",
@@ -430,6 +501,8 @@ rule evaluate_ner:
 
         score = metric.compute(predictions=outputs, references=golds)
         for ent in ENTS:
+            if ent not in score:
+                continue
             score[ent]["number"] = int(score[ent]["number"])
 
         with open(output.report, "w") as f:
