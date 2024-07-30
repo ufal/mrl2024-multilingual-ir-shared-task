@@ -24,9 +24,8 @@ Huggingface: [https://huggingface.co/facebook/nllb-200-3.3B](https://huggingface
 
 Languages:
 
-* Igbo
-* Yoruba
-
+* Igbo: 608 samples
+* Yoruba: 608 samples
 
 Huggingface: [https://huggingface.co/datasets/masakhane/afrimmlu](https://huggingface.co/datasets/masakhane/afrimmlu)
 
@@ -47,14 +46,14 @@ Huggingface: [https://huggingface.co/datasets/masakhane/afrimmlu](https://huggin
 
 Languages:
 
-* Alsatian
-* German
-* English
-* Igbo
-* Indonesian
-* Turkish
-* Uzbek
-* Yoruba
+* Alsatian: 900 samples
+* German: 900 samples
+* English: 900 samples
+* Igbo: 900 samples
+* Indonesian: 900 samples
+* Turkish: 900 samples
+* Uzbek: 900 samples
+* Yoruba: 900 samples
 
 Huggingface: [https://huggingface.co/datasets/facebook/belebele](https://huggingface.co/datasets/facebook/belebele)
 
@@ -71,7 +70,7 @@ Huggingface: [https://huggingface.co/datasets/facebook/belebele](https://hugging
 
 Languages:
 
-* Turkish
+* Turkish: 1964 samples
 
 Huggingface: [https://huggingface.co/datasets/mhardalov/exams](https://huggingface.co/datasets/mhardalov/exams)
 
@@ -104,7 +103,7 @@ Huggingface: [https://huggingface.co/datasets/mhardalov/exams](https://huggingfa
 
 Languages:
 
-* English
+* English: 9060 samples
 
 Huggingface: [https://huggingface.co/datasets/under-tree/labeled-multiple-choice](https://huggingface.co/datasets/under-tree/labeled-multiple-choice)
 
@@ -112,7 +111,7 @@ Huggingface: [https://huggingface.co/datasets/under-tree/labeled-multiple-choice
 
 Languages:
 
-* Indonesian
+* Indonesian (machine translated): 14798 samples
 
 Huggingface: [https://huggingface.co/datasets/alexandrainst/m_mmlu](https://huggingface.co/datasets/alexandrainst/m_mmlu)
 
@@ -130,7 +129,7 @@ Huggingface: [https://huggingface.co/datasets/alexandrainst/m_mmlu](https://hugg
 
 Languages:
 
-* Turkish
+* Turkish (machine translated): 15263 samples
 
 Huggingface: [https://huggingface.co/datasets/malhajar/mmlu_tr-v0.2](https://huggingface.co/datasets/malhajar/mmlu_tr-v0.2)
 
@@ -148,7 +147,7 @@ Huggingface: [https://huggingface.co/datasets/malhajar/mmlu_tr-v0.2](https://hug
 
 Languages:
 
-* English
+* English: 115700 samples
 
 Huggingace: [https://huggingface.co/datasets/lighteval/mmlu](https://huggingface.co/datasets/lighteval/mmlu)
 
@@ -172,7 +171,7 @@ Huggingace: [https://huggingface.co/datasets/lighteval/mmlu](https://huggingface
 
 Languages:
 
-* Igbo
-* Yoruba
+* Igbo: 89 samples
+* Yoruba: 191 samples
 
 Huggingface: [https://huggingface.co/datasets/aremuadeolajr/NaijaRC](https://huggingface.co/datasets/aremuadeolajr/NaijaRC)
