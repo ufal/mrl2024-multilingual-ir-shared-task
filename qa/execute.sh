@@ -7,6 +7,7 @@ conda env list
 conda activate snake_env
 
 # python download.py
-# python scoring.py
+python scoring.py
+python metrics.py
 
-torchrun --nproc_per_node $gpus training.py
+# torchrun --nproc_per_node $gpus training.py

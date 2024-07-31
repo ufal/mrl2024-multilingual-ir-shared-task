@@ -29,10 +29,10 @@ def compute_accuracy(language_ids, file_fn):
     print(f"Mean Accuracy for all languages: ", np.mean(acc_list))
 
 
-# language_ids = ["ALS", "AZ", "IG", "TR", "YO"]
-# file_fn = lambda language_id: os.path.join(results_folder, f"val_labeled_MC_{language_id}_scores.tsv")
+language_ids = ["ALS", "AZ", "IG", "TR", "YO"]
+file_fn = lambda language_id: os.path.join(results_folder, f"val_labeled_MC_{language_id}_scores.tsv")
 
-language_ids = ["ALZ", "AZE", "IBO", "TUR", "YOR"]
-file_fn = lambda language_id: os.path.join(results_folder, f"mrl.{language_id}.val.tsv_scores.tsv")
+# language_ids = ["ALZ", "AZE", "IBO", "TUR", "YOR"]
+# file_fn = lambda language_id: os.path.join(results_folder, f"mrl.{language_id}.val.tsv_scores.tsv")
 
 compute_accuracy(language_ids, file_fn)

@@ -10,84 +10,8 @@ from transformers import LlamaForCausalLM, AutoTokenizer, AutoModelForCausalLM
 from transformers.models.llama.modeling_llama import LlamaModel
 from tqdm import tqdm
 from itertools import permutations
-from __init__ import validation_folder, collection_mt_folder, results_folder
-from scoring import compute_accuracy
+from __init__ import validation_folder, collection_mt_folder, results_folder, prompt_lang_mapping, llama3_not_sharded_path, llama3_original_path 
 
-
-prompt_lang_mapping = {
-    "EN": {
-        "yes": "yes",
-        "no": "no",
-        "header_0": "In this context:",
-        "header_1": "Having this question:",
-        "header_2": "Is the answer:",
-        "header_3": "Please answer with yes or no:",
-        "header_4": "Which is the right answer from A, B, C and D?",
-
-        "sys_head": "You are an assistant trained to read the following context and answer the question with one of the options A), B), C) or D).",
-        "add_head": "The correct answer is:"
-    },
-    "ALS": {
-        "yes": "ja",
-        "no": "nein",
-        "header_0": "In diesem Kontext:",
-        "header_1": "Und dieser Frage:",
-        "header_2": "Ist die Antwort:",
-        "header_3": "Bitte antworten Sie mit ja oder nein:",
-        "header_4": "Welches ist die richtige Antwort von A, B, C und D?",
-
-        "sys_head": "Sie sind ein Assistent, der darauf trainiert ist, den folgenden Kontext zu lesen und die Frage mit einer der Optionen A), B), C) oder D) zu beantworten.",
-        "add_head": "Die richtige Antwort ist:"
-    },
-    "AZ": {
-        "yes": "bəli",
-        "no": "yox",
-        "header_0": "Bu kontekstdə:",
-        "header_1": "Və bu sual:",
-        "header_2": "Cavabdır:",
-        "header_3": "Zəhmət olmasa bəli və ya yox cavabı verin:",
-        "header_4": "A, B, C və D-dən hansı düzgün cavabdır?",
-
-        "sys_head": "Siz aşağıdakı konteksti oxumaq və suala A), B), C) və ya D) variantlarından biri ilə cavab vermək üçün təlim keçmiş köməkçisiniz.",
-        "add_head": "Düzgün cavab budur:"
-    },
-    "IG": {
-        "yes": "ee",
-        "no": "mba",
-        "header_0": "Inwe ọnọdụ a:",
-        "header_1": "Ma ajụjụ a:",
-        "header_2": "Ọ bụ azịza ya:",
-        "header_3": "Biko zaa ee ma ọ bụ mba:",
-        "header_4": "Kedu azịza ziri ezi sitere na A, B, C na D?",
-
-        "sys_head": "Ị bụ onye inyeaka a zụrụ azụ ịgụ ihe ndị a ma jiri otu nhọrọ A), B), C) ma ọ bụ D zaa ajụjụ ahụ.",
-        "add_head": "Azịza ziri ezi bụ:"
-    },
-    "TR": {
-        "yes": "evet",
-        "no": "hayir",
-        "header_0": "Bu bağlama sahip olmak:",
-        "header_1": "Ve bu soru:",
-        "header_2": "Cevap:",
-        "header_3": "Lütfen evet veya hayır şeklinde cevap verin:",
-        "header_4": "A, B, C ve D'nin doğru cevabı hangisidir?",
-        
-        "sys_head": "Aşağıdaki bağlamı okuyup soruyu A), B), C) veya D) seçeneklerinden biriyle yanıtlamak üzere eğitilmiş bir asistansınız.",
-        "add_head": "Doğru cevap:"
-    },
-    "YO": {
-        "yes": "beeni",
-        "no": "rara",
-        "header_0": "Nini ọrọ-ọrọ yii:",
-        "header_1": "Ati ibeere yii:",
-        "header_2": "Ṣe idahun:",
-        "header_3": "Jọwọ dahun pẹlu bẹẹni tabi rara:",
-        "header_4": "Kini idahun ti o tọ lati A, B, C ati D?",
-
-        "sys_head": "Iwọ jẹ oluranlọwọ ti o kọ ẹkọ lati ka ipo atẹle ati dahun ibeere naa pẹlu ọkan ninu awọn aṣayan A), B), C) tabi D).",
-        "add_head": "The correct answer is:"
-    },
-}
 
 def get_llama3_yes_logit(model, tokenizer, text, device, yes_id):
     inputs = tokenizer(text, return_tensors="pt").to(device)
@@ -240,13 +164,12 @@ def apply_inference(model, tokenizer, device, language_ids, file_fn, strategy, t
         scores_path = os.path.join(results_folder, os.path.basename(file_fn(language_id)) + "_scores.tsv")
         pd.DataFrame(final_samples).to_csv(scores_path, sep='\t', index=False)
 
-def main(strategy="question_level", scope="valid_translated"):
+def main(strategy="question_level", scope="valid_native"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-8B-Instruct/not_sharded/llama-3-8B"
-    model = AutoModelForCausalLM.from_pretrained(not_sharded_path, use_auth_token=True, device_map="auto", local_files_only=True, torch_dtype=torch.bfloat16)
+    model = AutoModelForCausalLM.from_pretrained(llama3_not_sharded_path, use_auth_token=True, device_map="auto", local_files_only=True, torch_dtype=torch.bfloat16)
 
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", use_auth_token=True)
+    tokenizer = AutoTokenizer.from_pretrained(llama3_original_path, use_auth_token=True)
     terminators = [
         tokenizer.eos_token_id,
         tokenizer.convert_tokens_to_ids("<|eot_id|>")
@@ -265,7 +188,6 @@ def main(strategy="question_level", scope="valid_translated"):
         english_prompts = True
 
     apply_inference(model, tokenizer, device, language_ids, file_fn, strategy, terminators, csv_sep, english_prompts)
-    compute_accuracy(language_ids, file_fn, csv_sep)
 
 
 def chat_inference(model, tokenizer, device):

@@ -1,7 +1,6 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
-# from transformers.models.llama.modeling_llama import LlamaModel
+from transformers import AutoModelForCausalLM
+from __init__ import llama3_not_sharded_path, llama3_original_path
 
-not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-8B-Instruct/not_sharded/llama-3-8B"
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", use_auth_token=True, device_map='auto') #, local_files_only=True)
 
-model.save_pretrained(not_sharded_path, safe_serialization=False)
+model = AutoModelForCausalLM.from_pretrained(llama3_original_path, use_auth_token=True, device_map='auto')
+model.save_pretrained(llama3_not_sharded_path, safe_serialization=False)
