@@ -1,6 +1,6 @@
-from transformers import AutoModelForCausalLM
-from __init__ import llama3_not_sharded_path, llama3_original_path
+from transformers import AutoModelForSeq2SeqLM
+from __init__ import aya_model_name, aya_model_not_sharded_path
 
 
-model = AutoModelForCausalLM.from_pretrained(llama3_original_path, use_auth_token=True, device_map='auto')
-model.save_pretrained(llama3_not_sharded_path, safe_serialization=False)
+model = AutoModelForSeq2SeqLM.from_pretrained(aya_model_name, use_auth_token=True, device_map='auto')
+model.save_pretrained(aya_model_not_sharded_path, safe_serialization=False)

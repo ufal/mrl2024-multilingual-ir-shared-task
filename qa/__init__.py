@@ -11,16 +11,38 @@ collection_folder = os.path.join(data_folder, "data")
 collection_mt_folder = os.path.join(data_folder, "data_mt")
 
 # 3.0 8B
-# llama3_original_path = "meta-llama/Meta-Llama-3-8B-Instruct"
-# llama3_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-8B-Instruct/not_sharded/llama-3-8B"
+llama3_3_0_base_original_path = "meta-llama/Meta-Llama-3-8B-Instruct"
+llama3_3_0_base_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-8B-Instruct/not_sharded/llama-3-8B"
 
 # 3.0 70B - estimated on 150GB
-# llama3_original_path = "meta-llama/Meta-Llama-3-70B-Instruct"
-# llama3_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-70B-Instruct/not_sharded"
+llama3_3_0_large_original_path = "meta-llama/Meta-Llama-3-70B-Instruct"
+llama3_3_0_large_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-70B-Instruct/not_sharded"
 
 # 3.1 8B
-llama3_original_path = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-llama3_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/Meta-Llama-3.1-8B-Instruct/not_sharded"
+llama3_3_1_base_original_path = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+llama3_3_1_base_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/Meta-Llama-3.1-8B-Instruct/not_sharded"
+
+aya_model_name = "CohereForAI/aya-101"
+aya_model_not_sharded_path = aya_model_name # "/home/manea/personal_work_troja/.cache/huggingface/hub/models--CohereForAI--aya-101/"
+
+def get_model_path_by_name(name):
+    if name == "aya_101_hf":
+        model_original_path = aya_model_name
+        model_local_path = aya_model_not_sharded_path
+
+    elif name == "llama_3.0_base":
+        model_original_path = llama3_3_0_base_original_path
+        model_local_path = llama3_3_0_base_not_sharded_path
+
+    elif name == "llama_3.0_large":
+        model_original_path = llama3_3_0_large_original_path
+        model_local_path = llama3_3_0_large_not_sharded_path
+    
+    elif name == "llama_3.1_base":
+        model_original_path = llama3_3_1_base_original_path
+        model_local_path = llama3_3_1_base_not_sharded_path
+
+    return model_original_path, model_local_path
 
 
 prompt_lang_mapping = {
@@ -94,6 +116,44 @@ prompt_lang_mapping = {
         "header_4": "Kini idahun ti o tọ lati A, B, C ati D?",
 
         "sys_head": "Iwọ jẹ oluranlọwọ ti o kọ ẹkọ lati ka ipo atẹle ati dahun ibeere naa pẹlu ọkan ninu awọn aṣayan A), B), C) tabi D).",
-        "add_head": "The correct answer is:"
+        # "add_head": "The correct answer is:",
+        "add_head": "Idahun to pe ni:"
     },
+    "ID": {
+        "yes": "ya",
+        "no": "tidak",
+        "header_0": "Dalam konteks ini:",
+        "header_1": "Punya pertanyaan ini:",
+        "header_2": "Apakah jawabannya:",
+        "header_3": "Jawablah ya atau tidak:",
+        "header_4": "Mana jawaban yang benar dari A, B, C, dan D?",
+
+        "sys_head": "Anda adalah asisten yang terlatih untuk membaca konteks berikut dan menjawab pertanyaan dengan salah satu pilihan A), B), C) atau D).",
+        "add_head": "Jawaban yang benar adalah:"
+    },
+    "UZ": {
+        "yes": "ha",
+        "no": "yo'q",
+        "header_0": "Shu nuqtai nazardan:",
+        "header_1": "Bu savolga ega:",
+        "header_2": "Javob:",
+        "header_3": "Iltimos, ha yoki yo'q deb javob bering:",
+        "header_4": "A, B, C va D dan qaysi javob to‘g‘ri?",
+
+        "sys_head": "Siz quyidagi kontekstni o'qish va savolga A), B), C) yoki D) variantlaridan biri bilan javob berishga o'rgatilgan yordamchisiz.",
+        "add_head": "To'g'ri javob:"
+    },
+}
+
+language_code_ds_to_mrl = {
+    "ALZ": "ALS",
+    "ENG": "EN",
+    "IBO": "IG",
+    "TUR": "TR",
+    "YOR": "YO",
+    # AZE is not in our dataset
+
+    "DEU": "ALS",
+    "IND": "ID",
+    "UZB": "UZ",
 }

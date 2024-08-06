@@ -168,3 +168,6 @@ cython_debug/
 
 # slurm logs
 slurm_logs/
+
+# huge models
+outputs/
