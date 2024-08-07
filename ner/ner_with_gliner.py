@@ -2,15 +2,11 @@ import logging
 import os
 
 import torch
-import wandb
 from datasets import Dataset
-from gliner import GLiNER, GLiNERConfig
-from gliner.training import Trainer, TrainingArguments
+from gliner import GLiNER
+from gliner.data_processing import GLiNERDataset
 from gliner.data_processing.collator import DataCollatorWithPadding
-from gliner.utils import load_config_as_namespace
-from gliner.data_processing import WordsSplitter, GLiNERDataset
-
-from collect_data import collect_data
+from gliner.training import Trainer, TrainingArguments
 
 logging.basicConfig(
     format="%(asctime)s: %(message)s", level=logging.INFO)
@@ -63,25 +59,14 @@ def ner_tags_to_spans(sample):
 def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str, model_save_path: str):
     logging.info("Loading the GLiNER model.")
     model = GLiNER.from_pretrained(gliner_model_path)
+    model._keys_to_ignore_on_save = None
     labels = ["person", "organization", "location", "date"]
-
-    # start a new wandb run to track this script
-    wandb.init(
-        # set the wandb project where this run will be logged
-        project="mrl2024-ner",
-        # set the name of the run
-        name="gliner tuning",
-    )
 
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
     model.to(device)
-    # model.compile_for_training()  # Dynamo is not supported on Python 3.12+
 
-    # got a weird error, trying something else
-    # train_data = train_data.map(ner_tags_to_spans)
-    # test_data = test_data.map(ner_tags_to_spans)
-    train_data = [ner_tags_to_spans(sample) for sample in train_data][1500:]
+    train_data = [ner_tags_to_spans(sample) for sample in train_data]
     test_data = [ner_tags_to_spans(sample) for sample in test_data]
 
     train_dataset = GLiNERDataset(train_data, model.config, data_processor=model.data_processor)
@@ -99,15 +84,17 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
         warmup_ratio=0.1,
         per_device_train_batch_size=16,
         per_device_eval_batch_size=16,
-        num_train_epochs=3,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
+        num_train_epochs=5,
+        eval_strategy="steps",
+        eval_steps=5000,
+        save_strategy="steps",
+        save_steps=5000,
         save_total_limit=2,
-        # label_names=["ner"],
-        # load_best_model_at_end=True,
-        # metric_for_best_model="f1",
+        label_names=["ner"],
+        load_best_model_at_end=True,
         dataloader_num_workers=8,
         use_cpu=False,
+        run_name="gliner_tuning"
     )
 
     trainer = Trainer(
@@ -121,7 +108,7 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
     trainer.train()
     base_path = os.path.basename(model_save_path)
     os.makedirs(base_path, exist_ok=True)
-    trainer.save_model(model_save_path)  # you know, based on what _load_best_model looks like, i'm not SURE this works
+    trainer.save_model(model_save_path)
 
 
 def run_gliner(f_input, f_output, gliner_model_path):
@@ -137,13 +124,15 @@ def run_gliner(f_input, f_output, gliner_model_path):
         token_starts = [0]
         for pos, char in enumerate(line):
             if char == " ":
+                if line[pos + 1] == " ":
+                    continue  # should avoid an issue where some sentences have random double spaces
                 token_starts.append(pos + 1)
         assert len(token_starts) == len(line.split())
         tags = ["O"] * len(line.split())
 
         # Predict entities
         entities = model.predict_entities(line, labels)
-
+        # print(f"Line: {line}")
         for entity in entities:
             char_start = entity["start"]
             char_end = entity["end"]
@@ -151,6 +140,10 @@ def run_gliner(f_input, f_output, gliner_model_path):
             # Find token indices
             token_start_idx = None
             for idx, start in enumerate(token_starts):
+                # hacky fix for untokenized years in brackets, which led to a couple exceptions:
+                if start == char_start - 1 and line[start] == "(":
+                    token_start_idx = idx
+                    break
                 if start >= char_start:
                     token_start_idx = idx
                     break
@@ -162,8 +155,8 @@ def run_gliner(f_input, f_output, gliner_model_path):
             if token_end_idx is None:
                 token_end_idx = len(token_starts)
 
-            assert token_start_idx is not None
-            assert token_start_idx <= token_end_idx
+            assert token_start_idx is not None, f"token_start_idx is None! Line: {line} Entity: {entity}"
+            assert token_start_idx <= token_end_idx, f'start_idx {token_start_idx} > end_idx {token_end_idx}. Line: {line} Entity: {entity}'
 
             if entity["label"] == "person":
                 tag = "PER"
@@ -175,9 +168,15 @@ def run_gliner(f_input, f_output, gliner_model_path):
                 tag = "DATE"
             else:
                 raise ValueError(f"Unknown entity label: {entity['label']}")
-
+            if token_start_idx >= len(tags):
+                print(
+                    f"ERROR: token_start_idx {token_start_idx} is >= len(tags) {len(tags)}. Line: {line} Entity: {entity}")
             tags[token_start_idx] = "B-" + tag
             for idx in range(token_start_idx + 1, token_end_idx):
+                if idx >= len(tags):
+                    print(
+                        f"WARNING: Trying to modify an index larger than len(tags)! Will skip. idx: {idx}. Line: {line}. Entity: {entity}")
+                    continue
                 tags[idx] = "I-" + tag
 
         if l_no % 10 == 9:

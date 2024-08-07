@@ -42,8 +42,7 @@ SHARED_TASK_2024_VAL_LANGS = SHARED_TASK_2023_VAL_LANGS
 ENTS = ["PER", "ORG", "LOC", "DATE"]
 
 TAG_LIST = [
-    "O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-DATE",
-    "I-DATE"]
+    "O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-DATE", "I-DATE"]
 
 SPACY_TYPES = ["PERSON", "ORG", "LOC", "DATE", "GPE", "TIME"]
 
@@ -53,7 +52,7 @@ rule all:
         expand("task_2024_experiments/{method}/{lang}/{split}.score",
                lang=SHARED_TASK_2024_VAL_LANGS.keys(),
                split=["validation"],
-               method=["spacy", "gliner-eng", "gliner-multi"]) #, "gliner-multi-tuned"])
+               method=["spacy", "gliner-eng", "gliner-multi", "uner", "gliner-multi-tuned", "uner-tuned"])
 
 
 localrules: prepare_submission_conll, output_as_conll, download_2023_validation, download_2024_validation
@@ -107,10 +106,10 @@ rule format_shared_task_conll:
 
         if wildcards.split == "validation":
             raw_split = "Val"
-            data_dir  = input.raw_val_data_dir
+            data_dir = input.raw_val_data_dir
         elif wildcards.split == "test":
             raw_split = "Test"
-            data_dir  = input.raw_test_data_dir
+            data_dir = input.raw_test_data_dir
         else:
             raise ValueError("Unknown split: {}".format(split))
 
@@ -163,6 +162,7 @@ rule translate_input_text:
         slurm_partition="gpu-troja,gpu-ms",
         constraint="'gpuram48G|gpuram40G|gpuram24G'",
         slurm_extra="'--gres=gpu:1'",
+        gpu=1
     run:
         from transformers import pipeline
         import torch
@@ -202,6 +202,7 @@ rule ner_with_spacy:
         cpus_per_task=4,
     run:
         import spacy
+
         logger = logging.getLogger("spacy")
         logger.setLevel(logging.INFO)
 
@@ -242,6 +243,29 @@ rule ner_with_spacy:
         logger.info("Done.")
 
 
+rule tune_uner:
+    output:
+        model_path="{dataset}_experiments/uner-tuned/tuned.log",
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="'--gres=gpu:1'",
+        gpu=1,
+    run:
+        from collect_data import collect_data
+        from ner_with_uner import tune_uner
+
+        train_data = collect_data("all", "train")
+        dev_data = collect_data("all", "dev")
+        model_path = output.model_path
+
+        tune_uner(train_data, dev_data, "universalner/uner_all", os.path.dirname(model_path))
+
+        with open(output.model_path, "w") as f:
+            print("Done.", file=f)
+
+
 rule tune_gliner_multi:
     output:
         model_path="{dataset}_experiments/gliner-multi-tuned/tuned.log",
@@ -258,10 +282,28 @@ rule tune_gliner_multi:
         train_data = collect_data("all", "train")
         dev_data = collect_data("all", "dev")
         model_path = output.model_path
-        tune_gliner(train_data, dev_data, "urchade/gliner_multi-v2.1", os.path.basename(model_path))
+        tune_gliner(train_data, dev_data, "urchade/gliner_multi-v2.1", os.path.dirname(model_path))
 
         with open(output.model_path, "w") as f:
             print("Done.", file=f)
+
+
+rule eval_tuned_uner:
+    input:
+        model_path="{dataset}_experiments/uner-tuned/tuned.log",
+        data="{dataset}_data/{lang}/{split}.txt"
+    output:
+        tags="{dataset}_experiments/uner-tuned/{lang}/{split}.orig-tags",
+    resources:
+        mem="40G",
+        cpus_per_task=8,
+        slurm_partition="gpu-troja,gpu-ms",
+        slurm_extra="'--gres=gpu:1'",
+        gpu=1,
+    run:
+        from ner_with_uner import run_uner
+
+        run_uner(input.data, output.tags, os.path.dirname(input.model_path))
 
 
 rule eval_tuned_gliner:
@@ -279,8 +321,8 @@ rule eval_tuned_gliner:
     run:
         from ner_with_gliner import run_gliner
 
-        with open(input.data) as f_in,open(output.tags,"w") as f_out:
-            run_gliner(f_in,f_out,os.path.basename(input.model_path))
+        with open(input.data) as f_in, open(output.tags, "w") as f_out:
+            run_gliner(f_in, f_out, os.path.dirname(input.model_path))
 
 
 rule ner_with_gliner_eng:
@@ -294,6 +336,7 @@ rule ner_with_gliner_eng:
         cpus_per_task=8,
         slurm_partition="gpu-troja,gpu-ms",
         slurm_extra="'--gres=gpu:1'",
+        gpu=1
     run:
         from ner_with_gliner import run_gliner
 
@@ -313,6 +356,7 @@ rule ner_with_gliner_multi:
         cpus_per_task=8,
         slurm_partition="gpu-troja,gpu-ms",
         slurm_extra="'--gres=gpu:1'",
+        gpu=1,
     run:
         from ner_with_gliner import run_gliner
 
@@ -330,65 +374,11 @@ rule ner_with_uner:
         cpus_per_task=8,
         slurm_partition="gpu-troja,gpu-ms",
         slurm_extra="'--gres=gpu:1'",
+        gpu=1,
     run:
-        from transformers import pipeline
-        classifier = pipeline("ner", model="universalner/uner_all")
+        from ner_with_uner import run_uner
 
-        with open(input[0]) as f_in, open(output.tags, "w") as f_out:
-            for line in f_in:
-                line = line.strip()
-                line = " ".join(line.split())
-
-                entities = classifier(line)
-                token_starts = [0]
-                for pos, char in enumerate(line):
-                    if char == " ":
-                        token_starts.append(pos + 1)
-                assert len(token_starts) == len(line.split())
-                tags = ["O"] * len(line.split())
-
-                current_tag_start = None
-                current_tag_end = None
-                current_entity_type = None
-
-                def resolve_entity():
-                    token_start_idx = None
-                    for idx, start in enumerate(token_starts):
-                        if start >= current_tag_start:
-                            token_start_idx = idx
-                            break
-                    if token_end_idx is None:
-                        token_end_idx = len(token_starts)
-                    token_end_idx = None
-                    for idx, start in enumerate(token_starts):
-                        if start >= current_tag_end:
-                            token_end_idx = idx
-                            break
-                    if token_end_idx is None:
-                        token_end_idx = len(token_starts)
-                    for idx in range(token_start_idx, token_end_idx):
-                        if idx == token_start_idx:
-                            tags[idx] = "B-" + current_entity_type
-                        else:
-                            tags[idx] = "I-" + current_entity_type
-
-                for entity in entities:
-                    tag, tag_type = entity["entity"].split("-")
-                    if tag == "B":
-                        if current_tag_start is not None:
-                            resolve_entity()
-                        current_entity_type = tag_type
-                        current_tag_start = entity["start"]
-                        current_tag_end = entity["end"]
-                    elif tag == "I":
-                        current_tag_end = entity["end"]
-                    else:
-                        raise ValueError(f"Unexpected tag: {tag}")
-
-                if current_tag_start is not None:
-                    resolve_entity()
-                    
-                print(" ".join(tags), file=f_out)
+        run_uner(input[0], output.tags, "universalner/uner_all")
 
 
 rule project_from_eng:
@@ -404,6 +394,7 @@ rule project_from_eng:
         slurm_partition="gpu-troja,gpu-ms",
         constraint="'gpuram48G'",
         slurm_extra="'--gres=gpu:1'",
+        gpu=1,
     run:
         from constrained_translate_with_tags import (
             project_markup, read_entities, format_entities)
@@ -454,7 +445,8 @@ rule project_orig_to_eng:
         mem="40G",
         cpus_per_task=8,
         partition="gpu-troja,gpu-ms",
-        flags="--gres=gpu:1 --constraint='gpuram48G'"
+        flags="--gres=gpu:1 --constraint='gpuram48G'",
+        gpu=1
     run:
         from constrained_translate_with_tags import (
             project_markup, read_entities, format_entities)
@@ -492,6 +484,7 @@ rule evaluate_ner:
     run:
         import evaluate
         import json
+
         metric = evaluate.load("seqeval")
 
         with open(input.system_output) as f:

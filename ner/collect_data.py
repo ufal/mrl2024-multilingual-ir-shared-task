@@ -1,3 +1,4 @@
+import random
 from typing import List, Union
 
 from datasets import load_dataset, concatenate_datasets, interleave_datasets
@@ -19,7 +20,7 @@ def load_transform_uzb_gh(split: str = "train"):
 
     def transform(entry):
         tokens = entry["sentence"]
-        tags = ["0"] * len(tokens)
+        tags = ["O"] * len(tokens)
         entities = entry["ner"]
         for entity in entities:
             idx = entity["index"]
@@ -94,14 +95,70 @@ def load_transform_swissner():
     return dataset_transformed
 
 
+def load_transform_aze(split):
+    if split == "train":
+        split = "train[:15000]"  # hopefully then end up with close to 10000 examples after transform and filter
+    elif split == "dev":
+        split = "train[15000:16500]"
+    elif split == "test":
+        split = "train[16500:18000]"
+    else:
+        raise ValueError("split must be 'train', 'dev', or 'test'")
+    aze = load_dataset("LocalDoc/azerbaijani-ner-dataset", split=split)
+    aze_labels = ["O", "PER", "LOC", "ORG", "DATE", "TIME", "MONEY", "PERCENT", "FACILITY", "PRODUCT", "EVENT", "ART",
+                  "LAW", "LANGUAGE", "GPE", "NORP", "ORDINAL", "CARDINAL", "DISEASE", "CONTACT", "ADAGE", "QUANTITY",
+                  "MISCELLANEOUS", "POSITION", "PROJECT"]
+
+    def transform(entry):
+        tags = eval(entry["ner_tags"])  # note that eval is not SAFE since it just runs the string as code (but it was also the one answer that would work fsr??)
+        tags = [aze_labels[int(i)] for i in tags]
+        tokens = eval(entry["tokens"])
+
+        new_tags = tags.copy()
+        inside = False
+        for i, tag in enumerate(tags):
+            if tag == "O":
+                inside = False
+                continue
+            else:  # any entity tag
+                if inside:  # inside was set true at a previous tag, with no intervening "O"
+                    if tags[i - 1] == tag:  # double-check that it's the same tag
+                        new_tags[i] = "I-" + tag
+                    else:
+                        new_tags[i] = "B-" + tag  # otherwise must be a new entity
+                if not inside:
+                    new_tags[i] = "B-" + tag
+                    inside = True
+
+        new_tags = [tag if (tag == "B-PER" or tag == "I-PER" or "LOC" in tag or "ORG" in tag)
+                    else "O" for tag in new_tags]
+        return {"tokens": tokens, "ner_tags": new_tags, "lang": "aze"}
+
+    def filter_many_empty_examples(entry):
+        # actually a different issue but also filter examples with mismatched label vs tokens length
+        if len(entry["ner_tags"]) != len(entry["tokens"]):
+            return False
+        tags = entry["ner_tags"]
+        label_ids = [0 if tag == "O" else 1 for tag in tags]
+        if any(label_ids):
+            return True
+        else:
+            coin = random.randint(0, 1)
+            return coin
+
+    dataset_transformed = aze.map(transform, remove_columns=["index"])
+    dataset_transformed = dataset_transformed.filter(filter_many_empty_examples)
+    return dataset_transformed
+
+
 def collect_data(datasets: Union[str, List[str]], split: str = "train"):
     if datasets == "all":
         if split == "train":
-            datasets = ["de_DE", "tr_polyglot", "id_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "uzb_gh"]
+            datasets = ["de_DE", "tr_polyglot", "id_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "uzb_gh", "aze"]
         elif split == "dev":
-            datasets = ["de_sw", "tr_polyglot", "id_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "uzb_gh"]
+            datasets = ["de_sw", "tr_polyglot", "id_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "uzb_gh", "aze"]
         elif split == "test":
-            datasets = ["de_sw", "tr_polyglot", "id_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "uzb_gh"]
+            datasets = ["de_sw", "tr_polyglot", "id_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "uzb_gh", "aze"]
     elif isinstance(datasets, str):
         datasets = [datasets]
 
@@ -121,9 +178,11 @@ def collect_data(datasets: Union[str, List[str]], split: str = "train"):
             fetched.append(load_transform_masakhaner2("ibo", split=split))
         if dataset == "uzb_gh":
             fetched.append(load_transform_uzb_gh(split=split))
+        if dataset == "aze":
+            fetched.append(load_transform_aze(split=split))
 
     # all_datasets = concatenate_datasets(fetched).remove_columns("id").shuffle()
     # can be updated with probabilities to sub- or up-sample a bit
     # right now I'm actually leaving out the Swiss German dataset because it's so tiny :(
-    all_datasets = interleave_datasets(fetched, stopping_strategy="first_exhausted").remove_columns("id").shuffle()
+    all_datasets = interleave_datasets(fetched, stopping_strategy="all_exhausted").remove_columns("id").shuffle()
     return all_datasets
