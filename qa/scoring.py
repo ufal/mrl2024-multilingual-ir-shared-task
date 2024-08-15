@@ -10,13 +10,13 @@ import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 from tqdm import tqdm
 from itertools import permutations
-from __init__ import validation_folder, collection_mt_folder, results_folder, prompt_lang_mapping, get_model_path_by_name 
+from __init__ import validation_mc_folder, test_mc_folder, validation_open_folder, test_open_folder, collection_mt_folder, results_folder, prompt_lang_mapping, get_model_path_by_name, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--strategy", default="question_level", type=str, help="The name of the evaluation strategy, can be answer_level, question_level")
 parser.add_argument("--scope", default="valid_translated", type=str, help="The name of the set to be evaluated. Can be one of valid_native, valid_translated.")
 parser.add_argument("--model_name", default="llama_3.1_base", type=str, help="The name of the model to be used. Can be one of aya_101_hf, llama_3.0_base, llama_3.0_large, llama_3.1_base.")
-
+parser.add_argument("--question_type", default="multiple_choice", type=str, help="The type of the question to be evaluated. Can be one of multiple_choice, open.")
 
 from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration
 from transformers.models.t5.tokenization_t5_fast import T5TokenizerFast
@@ -112,7 +112,45 @@ def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens)
     scores["generated_text"] = tokenizer.decode(outputs[0]) # skip_special_tokens=True
     return scores
 
-def apply_multiple_choice(sample, prompt_mapping, model_name, model, tokenizer, device, answer_tokens, terminators):
+def get_llama3_generated_text(model, tokenizer, messages, terminators):
+    input_ids = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        return_tensors="pt",
+    ).to(model.device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            input_ids,
+            max_new_tokens=80,
+            eos_token_id=terminators,
+            do_sample=True,
+            temperature=0.6,
+            top_p=0.9,
+            pad_token_id=tokenizer.eos_token_id
+        )
+    
+    scores = {}
+    scores["generated_text"] = tokenizer.decode(outputs[0, input_ids.shape[1]:])
+    return scores
+
+def get_aya_generated_text(model, tokenizer, messages):
+    input_dict = tokenizer(messages[1]["content"], return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            **input_dict,
+            max_new_tokens=80,
+            do_sample=True,
+            temperature=0.6,
+            top_p=0.9,
+        )
+    
+    scores = {}
+    scores["generated_text"] = tokenizer.decode(outputs[0])
+    return scores
+
+def apply_multiple_choice(sample, prompt_mapping, model_name, model, tokenizer, device, answer_tokens, terminators, question_type):
     text = sample.get("text", "")
     question = sample.get("question")
 
@@ -143,6 +181,31 @@ def apply_multiple_choice(sample, prompt_mapping, model_name, model, tokenizer, 
     sample.update(answer_scores)
     return sample
 
+def apply_open_question(sample, prompt_mapping, model_name, model, tokenizer, device, terminators):
+    text = sample.get("text", "")
+    question = sample.get("question")
+
+    sys_header = prompt_mapping.get("sys_head_open")
+
+    messages = [
+        {
+            "role": "system", 
+            "content": sys_header
+        },
+        {
+            "role": "user", 
+            "content": f"{text} {question}".strip()
+        }, 
+    ]
+    if model_name.startswith("llama"):
+        answer_scores = get_llama3_generated_text(model, tokenizer, messages, terminators)
+    
+    elif model_name.startswith("aya"):
+        answer_scores = get_aya_generated_text(model, tokenizer, messages)  
+    
+    sample.update(answer_scores)
+    return sample
+
 def shuffle_answers(df):
     all_permutations = list(permutations(range(4)))
     chosen_permutations = [random.choice(all_permutations) for _ in range(len(df))]
@@ -166,13 +229,17 @@ def shuffle_answers(df):
 
     return samples
 
-def apply_inference(model, tokenizer, device, language_ids, file_fn, strategy, terminators, csv_sep, english_prompts, using_s_tok):
+def apply_inference(model, tokenizer, device, language_ids, file_fn, strategy, terminators, csv_sep, english_prompts, using_s_tok, question_type):
     for language_id in language_ids:
         print("Starting to score language: ", language_id)
 
         df_path = file_fn(language_id)
         df = pd.read_csv(df_path, sep=csv_sep)
-        samples = shuffle_answers(df)
+
+        if "label" in df.columns:
+            samples = shuffle_answers(df)
+        else:
+            samples = df.to_dict(orient="records")
 
         lang_code = "EN" if english_prompts else language_id
         prompt_mapping = prompt_lang_mapping.get(lang_code, {})
@@ -194,12 +261,47 @@ def apply_inference(model, tokenizer, device, language_ids, file_fn, strategy, t
             if strategy == "answer_level":
                 sample = apply_inference_answer_level(sample, prompt_mapping, args.model_name, model, tokenizer, device, yes_id)
             elif strategy == "question_level":
-                sample = apply_multiple_choice(sample, prompt_mapping, args.model_name, model, tokenizer, device, answer_token_ids, terminators)
+                if question_type == "multiple_choice":
+                    sample = apply_multiple_choice(sample, prompt_mapping, args.model_name, model, tokenizer, device, answer_token_ids, terminators)
+                elif question_type == "open":
+                    sample = apply_open_question(sample, prompt_mapping, args.model_name, model, tokenizer, device, terminators)
             
             final_samples.append(sample)
 
         scores_path = os.path.join(results_folder, os.path.basename(file_fn(language_id)) + "_scores.tsv")
         pd.DataFrame(final_samples).to_csv(scores_path, sep='\t', index=False)
+
+def get_usefull_parameters(args):
+    csv_sep = ','
+    english_prompts = False
+
+    if args.question_type == "multiple_choice":
+        
+        if args.scope == "valid_native":
+            language_ids = mc_qa_native_languages
+            file_fn = lambda language_id: os.path.join(validation_mc_folder, f"val_labeled_MC_{language_id}.csv")
+
+        elif args.scope == "valid_translated":
+            language_ids = mc_qa_translated_languages
+            file_fn = lambda language_id: os.path.join(collection_mt_folder, f"mrl.{language_id}.val.tsv")
+            csv_sep = '\t'
+            english_prompts = True
+
+        elif args.scope == "test_native":
+            language_ids = mc_qa_native_languages
+            file_fn = lambda language_id: os.path.join(test_mc_folder, f"MC_{language_id}_test.predict")
+
+    elif args.question_type == "open":
+        
+        if args.scope == "valid_native":
+            language_ids = open_qa_native_languages
+            file_fn = lambda language_id: os.path.join(validation_open_folder, f"QA_{language_id}_Val.csv")
+
+        elif args.scope == "test_native":
+            language_ids = open_qa_native_languages
+            file_fn = lambda language_id: os.path.join(test_open_folder, f"QA_{language_id}_Test_no_labels.csv")
+
+    return language_ids, file_fn, csv_sep, english_prompts
 
 def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -220,19 +322,8 @@ def main(args):
         tokenizer.convert_tokens_to_ids("<|eot_id|>")
     ]
 
-    if args.scope == "valid_native":
-        language_ids = ["ALS", "AZ", "IG", "TR", "YO"]
-        file_fn = lambda language_id: os.path.join(validation_folder, f"val_labeled_MC_{language_id}.csv")
-        csv_sep = ','
-        english_prompts = False
-
-    elif args.scope == "valid_translated":
-        language_ids = ["ALS", "AZE", "IBO", "TUR", "YOR"]
-        file_fn = lambda language_id: os.path.join(collection_mt_folder, f"mrl.{language_id}.val.tsv")
-        csv_sep = '\t'
-        english_prompts = True
-
-    apply_inference(model, tokenizer, device, language_ids, file_fn, args.strategy, terminators, csv_sep, english_prompts, using_s_tok)
+    language_ids, file_fn, csv_sep, english_prompts = get_usefull_parameters(args)
+    apply_inference(model, tokenizer, device, language_ids, file_fn, args.strategy, terminators, csv_sep, english_prompts, using_s_tok, args.question_type)
 
 
 def chat_inference(model, tokenizer, device):
@@ -273,6 +364,7 @@ def chat_inference(model, tokenizer, device):
             do_sample=True,
             temperature=0.6,
             top_p=0.9,
+            pad_token_id=tokenizer.eos_token_id
         )
         ipdb.set_trace()
         print(outputs, file=sys.stderr)
