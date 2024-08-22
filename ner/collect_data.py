@@ -1,7 +1,7 @@
 import random
 from typing import List, Union
 
-from datasets import load_dataset, concatenate_datasets, interleave_datasets
+from datasets import load_dataset, interleave_datasets
 
 LABELS_MASAKHANER = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-DATE", "I-DATE"]
 
@@ -43,7 +43,9 @@ def load_transform_masakhaner2(lang: str, split: str):  # particularly for yor a
         split = "validation"
     dataset = load_dataset("masakhane/masakhaner2", lang, split=split)
     dataset_transformed = dataset.map(
-        lambda x: {'ner_labels': [LABELS_MASAKHANER[i] for i in x['ner_tags']], "lang": lang},
+        lambda x: {
+            'ner_labels': [LABELS_MASAKHANER[i] if "DATE" not in LABELS_MASAKHANER[i] else "O" for i in x['ner_tags']],
+            "lang": lang},
         remove_columns=["ner_tags"]
     )
 
@@ -53,14 +55,26 @@ def load_transform_masakhaner2(lang: str, split: str):  # particularly for yor a
 
 def load_transform_polyglot(lang: str, split: str):  # particularly for tr and id
     if split == "train":
-        split = "train[:10000]"
+        split = "train[:15000]"  # hopefully then end up with close to 10000 examples after transform and filter
     elif split == "dev":
-        split = "train[10000:11000]"
+        split = "train[15000:16500]"
     elif split == "test":
-        split = "train[11000:12000]"
+        split = "train[16500:18000]"
     else:
         raise ValueError("split must be 'train', 'dev', or 'test'")
     dataset = load_dataset("rmyeid/polyglot_ner", lang, split=split, trust_remote_code=True)
+
+    def filter_many_empty_examples(entry):
+        # actually a different issue but also filter examples with mismatched label vs tokens length
+        if len(entry["ner_tags"]) != len(entry["tokens"]):
+            return False
+        tags = entry["ner_tags"]
+        label_ids = [0 if tag == "O" else 1 for tag in tags]
+        if any(label_ids):
+            return True
+        else:
+            coin = random.randint(0, 1)
+            return coin
 
     def transform(entry):
         tokens = entry["words"]
@@ -83,6 +97,7 @@ def load_transform_polyglot(lang: str, split: str):  # particularly for tr and i
         return {"tokens": tokens, "ner_tags": new_tags}
 
     dataset_transformed = dataset.map(transform, remove_columns=["ner", "words"])
+    dataset_transformed = dataset_transformed.filter(filter_many_empty_examples)
     return dataset_transformed
 
 
@@ -181,8 +196,10 @@ def collect_data(datasets: Union[str, List[str]], split: str = "train"):
         if dataset == "aze":
             fetched.append(load_transform_aze(split=split))
 
-    # all_datasets = concatenate_datasets(fetched).remove_columns("id").shuffle()
-    # can be updated with probabilities to sub- or up-sample a bit
-    # right now I'm actually leaving out the Swiss German dataset because it's so tiny :(
+    with open("train_data/ner_data.txt", "w") as f:
+        for dataset in fetched:
+            for item in dataset:
+                f.write("%s\n" % item)
+
     all_datasets = interleave_datasets(fetched, stopping_strategy="all_exhausted").remove_columns("id").shuffle()
     return all_datasets
