@@ -21,6 +21,9 @@ parser.add_argument("--question_type", default="multiple_choice", type=str, help
 from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration
 from transformers.models.t5.tokenization_t5_fast import T5TokenizerFast
 
+# <bound method GenerationMixin.generate of T5ForConditionalGeneration
+from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration
+
 def get_llama3_yes_logit(model, tokenizer, text, device, yes_id):
     inputs = tokenizer(text, return_tensors="pt").to(device)
 
@@ -89,13 +92,13 @@ def get_llama3_letter_logits(model, tokenizer, messages, add_header, answer_toke
 def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens):
     input_dict = tokenizer(messages[1]["content"], return_tensors="pt").to(model.device)
 
-    additional = add_header + tokenizer.pad_token + ' '
+    additional = add_header + ' ' + tokenizer.pad_token + ' '
     additional_ids = tokenizer.encode(additional, return_tensors="pt").to(model.device)
+    additional_ids = additional_ids[:, :-1]
 
     with torch.no_grad():
         output = model(**input_dict, decoder_input_ids=additional_ids)
         next_logits = output.logits[0, -1]
-    # TODO investigate this more about the padding
 
     scores = {}
     for answer_id, token_id in answer_tokens.items():
@@ -106,13 +109,14 @@ def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens)
     with torch.no_grad():
         outputs = model.generate(
             **input_dict,
+            decoder_input_ids=additional_ids,
             max_new_tokens=15,
             do_sample=True,
             temperature=0.6,
             top_p=0.9,
         )
 
-    scores["generated_text"] = tokenizer.decode(outputs[0]) # skip_special_tokens=True
+    scores["generated_text"] = tokenizer.decode(outputs[0, len(additional_ids[0]) + 1:]) # skip_special_tokens=True
     return scores
 
 def get_llama3_generated_text(model, tokenizer, messages, terminators):
@@ -309,6 +313,7 @@ def get_usefull_parameters(args):
 def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_original_path, model_local_path = get_model_path_by_name(args.model_name)
+    max_memory = {i: '30GiB' for i in range(torch.cuda.device_count())}
     
     if args.model_name.startswith("llama"):
         model_class = AutoModelForCausalLM
@@ -317,7 +322,9 @@ def main(args):
         model_class = AutoModelForSeq2SeqLM
         using_s_tok = False
 
-    model = model_class.from_pretrained(model_local_path, device_map="auto", torch_dtype=torch.bfloat16)
+    model = model_class.from_pretrained(model_local_path, device_map="auto", torch_dtype=torch.bfloat16, max_memory=max_memory, offload_folder="offload")
+    model.gradient_checkpointing_enable()
+    
     tokenizer = AutoTokenizer.from_pretrained(model_original_path, use_auth_token=True)
 
     terminators = [
