@@ -25,28 +25,30 @@ llama3_3_0_base_original_path = "meta-llama/Meta-Llama-3-8B-Instruct"
 llama3_3_0_base_not_sharded_path = "/home/manea/personal_work_troja/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-8B-Instruct/not_sharded/llama-3-8B"
 
 # 3.0 70B - estimated on 150GB 0 - not recommended
-# llama3_3_0_large_original_path = "meta-llama/Meta-Llama-3-70B-Instruct"
-# llama3_3_0_large_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-70B-Instruct/not_sharded"
+llama3_3_0_large_original_path = "meta-llama/Meta-Llama-3-70B-Instruct"
 
 # 3.1 8B
 llama3_3_1_base_original_path = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 llama3_3_1_base_not_sharded_path = "/home/manea/personal_work_ms/.cache/huggingface/hub/Meta-Llama-3.1-8B-Instruct/not_sharded"
 
 aya_model_name = "CohereForAI/aya-101"
-aya_model_not_sharded_path = aya_model_name # "/home/manea/personal_work_troja/.cache/huggingface/hub/models--CohereForAI--aya-101/"
 
 def get_model_path_by_name(name):
     if name == "aya_101_hf":
         model_original_path = aya_model_name
-        model_local_path = aya_model_not_sharded_path
+        model_local_path = aya_model_name
 
     elif name == "llama_3.0_base":
         model_original_path = llama3_3_0_base_original_path
         model_local_path = llama3_3_0_base_not_sharded_path
 
-    # elif name == "llama_3.0_large":
-    #     model_original_path = llama3_3_0_large_original_path
-    #     model_local_path = llama3_3_0_large_not_sharded_path
+    elif name == "llama_3.0_tuned":
+        model_original_path = llama3_3_0_base_original_path
+        model_local_path = "outputs/llama_3.0_base/checkpoint-7152"
+
+    elif name == "llama_3.0_large":
+        model_original_path = llama3_3_0_large_original_path
+        model_local_path = llama3_3_0_large_original_path
     
     elif name == "llama_3.1_base":
         model_original_path = llama3_3_1_base_original_path
@@ -54,7 +56,7 @@ def get_model_path_by_name(name):
 
     elif name == "llama_3.1_tuned":
         model_original_path = llama3_3_1_base_original_path
-        model_local_path = "outputs/llama_3.1_base/checkpoint-7378"
+        model_local_path = "outputs/llama_3.1_base/checkpoint-36890"
 
     return model_original_path, model_local_path
 

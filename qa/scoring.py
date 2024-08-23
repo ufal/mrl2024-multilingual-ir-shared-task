@@ -88,11 +88,14 @@ def get_llama3_letter_logits(model, tokenizer, messages, add_header, answer_toke
     
 def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens):
     input_dict = tokenizer(messages[1]["content"], return_tensors="pt").to(model.device)
-    additional_ids = tokenizer.encode(add_header, return_tensors="pt").to(model.device)
+
+    additional = add_header + tokenizer.pad_token + ' '
+    additional_ids = tokenizer.encode(additional, return_tensors="pt").to(model.device)
 
     with torch.no_grad():
         output = model(**input_dict, decoder_input_ids=additional_ids)
         next_logits = output.logits[0, -1]
+    # TODO investigate this more about the padding
 
     scores = {}
     for answer_id, token_id in answer_tokens.items():
@@ -150,7 +153,7 @@ def get_aya_generated_text(model, tokenizer, messages):
     scores["generated_text"] = tokenizer.decode(outputs[0])
     return scores
 
-def apply_multiple_choice(sample, prompt_mapping, model_name, model, tokenizer, device, answer_tokens, terminators, question_type):
+def apply_multiple_choice(sample, prompt_mapping, model_name, model, tokenizer, device, answer_tokens, terminators):
     text = sample.get("text", "")
     question = sample.get("question")
 
@@ -299,7 +302,7 @@ def get_usefull_parameters(args):
 
         elif args.scope == "test_native":
             language_ids = open_qa_native_languages
-            file_fn = lambda language_id: os.path.join(test_open_folder, f"QA_{language_id}_Test_no_labels.csv")
+            file_fn = lambda language_id: os.path.join(test_open_folder, f"QA_{language_id}_test.predict")
 
     return language_ids, file_fn, csv_sep, english_prompts
 
