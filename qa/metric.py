@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--scope", default="valid_native", type=str, help="The name of the set to be evaluated. Can be one of valid_native, valid_translated.")
 parser.add_argument("--question_type", default="multiple_choice", type=str, help="The type of the question to be evaluated. Can be one of multiple_choice, open.")
 parser.add_argument("--answer_source", default="scores", type=str, help="The source of the answers. Can be one of scores, generated.")
+parser.add_argument("--model_name", default="llama_3.1_base", type=str, help="The name of the model to be used. Can be one of aya_101_hf, llama_3.0_base, llama_3.0_large, llama_3.1_base.")
 
 def compute_accuracy(language_ids, file_fn, answer_source):
     acc_list = []
@@ -92,11 +93,11 @@ def main(args):
 
         if args.scope == "valid_native":
             language_ids = mc_qa_native_languages
-            file_fn = lambda language_id: os.path.join(results_folder, f"val_labeled_MC_{language_id}.csv_scores.tsv")
+            file_fn = lambda language_id: os.path.join(results_folder, args.model_name, f"val_labeled_MC_{language_id}.csv_scores.tsv")
         
         elif args.scope == "valid_translated":
             language_ids = mc_qa_translated_languages
-            file_fn = lambda language_id: os.path.join(results_folder, f"mrl.{language_id}.val.tsv_scores.tsv")
+            file_fn = lambda language_id: os.path.join(results_folder, args.model_name, f"mrl.{language_id}.val.tsv_scores.tsv")
 
         compute_accuracy(language_ids, file_fn, args.answer_source)
 
@@ -104,7 +105,7 @@ def main(args):
 
         if args.scope == "valid_native":
             language_ids = open_qa_native_languages
-            file_fn = lambda language_id: os.path.join(results_folder, f"QA_{language_id}_Val.csv_scores.tsv")
+            file_fn = lambda language_id: os.path.join(results_folder, args.model_name, f"QA_{language_id}_Val.csv_scores.tsv")
 
         check_token_stats(language_ids, file_fn)
         compute_string_metrics(language_ids, file_fn)
