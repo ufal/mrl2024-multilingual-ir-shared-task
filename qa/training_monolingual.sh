@@ -9,14 +9,14 @@
 #SBATCH --gpus=1
 #SBATCH --constraint="gpuram40G|gpuram48G"
 set -e
-source /home/vico/personal_work_troja/alignable_tokenizer/.venv/bin/activate
+
 which python
 date +"%Y-%m-%d %H:%M:%S"
 for lang in YOR ALS AZE IBO TUR ; do
     echo "=== $LANG ==="
     # Make dataset
     echo dataset
-    python dataset_lab.py --lang $LANG
+    python datasets_lab.py --lang $LANG
 
     # Train
     echo Training
