@@ -10,13 +10,14 @@ from rouge_score import rouge_scorer
 from evaluate import load
 from transformers import AutoTokenizer
 
-from __init__ import results_folder, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages
+from __init__ import results_folder, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages, language_code_ds_to_mrl
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--scope", default="valid_native", type=str, help="The name of the set to be evaluated. Can be one of valid_native, valid_translated.")
 parser.add_argument("--question_type", default="multiple_choice", type=str, help="The type of the question to be evaluated. Can be one of multiple_choice, open.")
 parser.add_argument("--answer_source", default="scores", type=str, help="The source of the answers. Can be one of scores, generated.")
 parser.add_argument("--model_name", default="llama_3.1_base", type=str, help="The name of the model to be used. Can be one of aya_101_hf, llama_3.0_base, llama_3.0_large, llama_3.1_base.")
+parser.add_argument("--lang", default=None, help="If given, only use files in this language.")
 
 def compute_accuracy(language_ids, file_fn, answer_source):
     acc_list = []
@@ -93,10 +94,14 @@ def main(args):
 
         if args.scope == "valid_native":
             language_ids = mc_qa_native_languages
+            if args.lang is not None:
+                language_ids = [language_code_ds_to_mrl[args.lang]]
             file_fn = lambda language_id: os.path.join(results_folder, args.model_name, f"val_labeled_MC_{language_id}.csv_scores.tsv")
         
         elif args.scope == "valid_translated":
             language_ids = mc_qa_translated_languages
+            if args.lang is not None:
+                language_ids = [args.lang]
             file_fn = lambda language_id: os.path.join(results_folder, args.model_name, f"mrl.{language_id}.val.tsv_scores.tsv")
 
         compute_accuracy(language_ids, file_fn, args.answer_source)
@@ -105,6 +110,8 @@ def main(args):
 
         if args.scope == "valid_native":
             language_ids = open_qa_native_languages
+            if args.lang is not None:
+                language_ids = [language_code_ds_to_mrl[args.lang]]
             file_fn = lambda language_id: os.path.join(results_folder, args.model_name, f"QA_{language_id}_Val.csv_scores.tsv")
 
         check_token_stats(language_ids, file_fn)
