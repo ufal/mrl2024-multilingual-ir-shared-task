@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+import argparse
 from __init__ import collection_folder, crafted_folder, prompt_lang_mapping, language_code_ds_to_mrl
 
 from glob import glob
@@ -142,9 +144,9 @@ def test_dataset():
 
 
 # TODO: add exams
-dataset_names = ["belebele"] #, "afrimmlu", "m_mmlu", "mmlu_tr", "naija_rc"]
+dataset_names = ["belebele", "afrimmlu", "m_mmlu", "mmlu_tr", "naija_rc", "exams"]
 
-def gather_collection():
+def gather_collection(lang = None):
     collection = pd.DataFrame()
     for ds in tqdm(dataset_names):
         files_re = os.path.join(collection_folder, ds + "*")
@@ -152,10 +154,10 @@ def gather_collection():
         for filename in glob(files_re):
             basename = os.path.basename(filename)
             lang_code = basename.split('.')[1]
-
-            df = pd.read_csv(filename, sep='\t')
-            df["lang_code"] = lang_code
-            df["source"] = ds
+            if lang is None or lang_code == lang:                
+                df = pd.read_csv(filename, sep='\t')
+                df["lang_code"] = lang_code
+                df["source"] = ds
 
             collection = pd.concat([collection, df], ignore_index=True)
     
@@ -171,8 +173,8 @@ def view_token_statistics(collection):
         tokens_len_mean = np.mean([len(tokenizer.encode(row[row["label"]])) for _, row in group.iterrows()])
         print(f"{lang_code}: Mean tokens length: {tokens_len_mean}")
             
-def main():
-    collection = gather_collection()
+def main(args):
+    collection = gather_collection(args.lang)
 
     collection["label"] = collection["label"].str.strip()
     valid_labels_mask = collection['label'].isin(["A", "B", "C", "D"])
@@ -233,7 +235,10 @@ def get_extended_chat_dataset(scope, tokenizer, is_circular=False):
     return dataset, data_collator
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lang", default=None, help="If given, language for the monolingual dataset.")
+    args = parser.parse_args()
+    main(args)
     # test_dataset()
     # get_extended_chat_dataset()
 
