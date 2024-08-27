@@ -143,7 +143,6 @@ def test_dataset():
         print(batch.keys())
 
 
-# TODO: add exams
 dataset_names = ["belebele", "afrimmlu", "m_mmlu", "mmlu_tr", "naija_rc", "exams"]
 
 def gather_collection(lang = None):
@@ -158,9 +157,7 @@ def gather_collection(lang = None):
                 df = pd.read_csv(filename, sep='\t')
                 df["lang_code"] = lang_code
                 df["source"] = ds
-
-            collection = pd.concat([collection, df], ignore_index=True)
-    
+                collection = pd.concat([collection, df], ignore_index=True)
     return collection
 
 def view_token_statistics(collection):

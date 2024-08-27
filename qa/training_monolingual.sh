@@ -13,10 +13,10 @@ set -e
 which python
 date +"%Y-%m-%d %H:%M:%S"
 for lang in YOR ALS AZE IBO TUR ; do
-    echo "=== $LANG ==="
+    echo "=== $lang ==="
     # Make dataset
     echo dataset
-    python datasets_lab.py --lang $LANG
+    python datasets_lab.py --lang $lang
 
     # Train
     echo Training
