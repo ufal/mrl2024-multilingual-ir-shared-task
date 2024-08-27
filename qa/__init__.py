@@ -1,4 +1,11 @@
 import os
+import random
+import torch
+import numpy as np
+
+random.seed(10)
+torch.manual_seed(101)
+np.random.seed(101)
 
 data_folder = "data"
 
@@ -171,6 +178,7 @@ prompt_lang_mapping = {
 
 language_code_ds_to_mrl = {
     "ALZ": "ALS",
+    "ALS": "ALS",
     "ENG": "EN",
     "IBO": "IG",
     "TUR": "TR",

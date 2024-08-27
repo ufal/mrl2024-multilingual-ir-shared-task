@@ -30,8 +30,9 @@ def compute_accuracy(language_ids, file_fn, answer_source):
             if answer_source == "scores":
                 answer = index_max[0]
             else:
-                answer = next(filter(str.isalpha, row["generated_text"].replace("<pad>", "")))
-
+                text = row["generated_text"].replace("<pad>", "")
+                answer = next(filter(str.isalpha, text))
+                
             predicted.append(answer)
             
         labels = df["label"].tolist()

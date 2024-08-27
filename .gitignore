@@ -1,7 +1,6 @@
 **/.snakemake
 ner/task_202*
-qa/data*
-qa/val_labeled*
+qa/data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -171,3 +170,4 @@ slurm_logs/
 
 # huge models
 outputs/
+offload/

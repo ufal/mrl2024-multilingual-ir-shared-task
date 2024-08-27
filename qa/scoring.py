@@ -92,7 +92,7 @@ def get_llama3_letter_logits(model, tokenizer, messages, add_header, answer_toke
 def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens):
     input_dict = tokenizer(messages[1]["content"], return_tensors="pt").to(model.device)
 
-    additional = add_header + ' ' + tokenizer.pad_token + ' '
+    additional = tokenizer.pad_token + ' ' + add_header 
     additional_ids = tokenizer.encode(additional, return_tensors="pt").to(model.device)
     additional_ids = additional_ids[:, :-1]
 
@@ -116,7 +116,7 @@ def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens)
             top_p=0.9,
         )
 
-    scores["generated_text"] = tokenizer.decode(outputs[0, len(additional_ids[0]) + 1:]) # skip_special_tokens=True
+    scores["generated_text"] = tokenizer.decode(outputs[0, len(additional_ids[0]):]) # skip_special_tokens=True
     return scores
 
 def get_llama3_generated_text(model, tokenizer, messages, terminators):

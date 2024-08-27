@@ -137,15 +137,15 @@ def get_llama_model_and_ds(args):
     if tokenizer.model_max_length > 100_000:
         tokenizer.model_max_length = 2048
 
-    train_dataset = get_extended_chat_dataset("train", tokenizer=tokenizer)
-    val_dataset = get_extended_chat_dataset("valid", tokenizer=tokenizer)
+    train_dataset, data_collator = get_extended_chat_dataset("train", tokenizer=tokenizer)
+    val_dataset, _ = get_extended_chat_dataset("valid", tokenizer=tokenizer)
 
-    return model_local_path, train_dataset, val_dataset, tokenizer
+    return model_local_path, train_dataset, val_dataset, tokenizer, data_collator
 
 def main_llm(args):
     # inspired from https://github.com/AvisP/LM_Finetune/blob/main/llama-3-finetune-qlora.ipynb
 
-    model_id, train_dataset, val_dataset, tokenizer = get_llama_model_and_ds(args)
+    model_id, train_dataset, val_dataset, tokenizer, data_collator = get_llama_model_and_ds(args)
     training_args = get_llama_training_arguments(args)
 
     peft_config = LoraConfig(
@@ -157,18 +157,18 @@ def main_llm(args):
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
     )
 
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-    ).to_dict()
+    # quantization_config = BitsAndBytesConfig(
+    #     load_in_4bit=True,
+    #     bnb_4bit_use_double_quant=True,
+    #     bnb_4bit_quant_type="nf4",
+    #     bnb_4bit_compute_dtype=torch.bfloat16,
+    # ).to_dict()
 
     model_kwargs = dict(
-        torch_dtype=torch.bfloat16,
+        torch_dtype="auto",
         use_cache=False,
         device_map="auto",
-        quantization_config=quantization_config,
+        # quantization_config=quantization_config,
     )
     model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
 
@@ -177,6 +177,7 @@ def main_llm(args):
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
+        data_collator=data_collator,
         dataset_text_field="text",
         tokenizer=tokenizer,
         packing=True,

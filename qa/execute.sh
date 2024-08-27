@@ -10,7 +10,7 @@ gpus="$1"
 echo "$gpus gpus available"
 
 SCOPE=valid_native
-MODEL_NAME=llama_3.0_large
+MODEL_NAME=aya_101_hf
 QUESTION_TYPE=multiple_choice
 
 export OMP_NUM_THREADS=1
