@@ -236,7 +236,7 @@ def shuffle_answers(df):
 
     return samples
 
-def apply_inference(model, tokenizer, device, language_ids, file_fn, strategy, terminators, csv_sep, english_prompts, using_s_tok, question_type):
+def apply_inference(model, model_name, tokenizer, device, language_ids, file_fn, strategy, terminators, csv_sep, english_prompts, using_s_tok, question_type):
     for language_id in language_ids:
         print("Starting to score language: ", language_id)
 
@@ -275,7 +275,7 @@ def apply_inference(model, tokenizer, device, language_ids, file_fn, strategy, t
             
             final_samples.append(sample)
 
-        scores_path = os.path.join(results_folder, os.path.basename(file_fn(language_id)) + "_scores.tsv")
+        scores_path = os.path.join(results_folder, model_name, os.path.basename(file_fn(language_id)) + "_scores.tsv")
         pd.DataFrame(final_samples).to_csv(scores_path, sep='\t', index=False)
 
 def get_usefull_parameters(args):
@@ -333,7 +333,7 @@ def main(args):
     ]
 
     language_ids, file_fn, csv_sep, english_prompts = get_usefull_parameters(args)
-    apply_inference(model, tokenizer, device, language_ids, file_fn, args.strategy, terminators, csv_sep, english_prompts, using_s_tok, args.question_type)
+    apply_inference(model, args.model_name, tokenizer, device, language_ids, file_fn, args.strategy, terminators, csv_sep, english_prompts, using_s_tok, args.question_type)
 
 
 def chat_inference(model, tokenizer, device):
