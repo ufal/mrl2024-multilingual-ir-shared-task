@@ -7,7 +7,7 @@
 #SBATCH -N 1                      # number of nodes (default 1)
 #SBATCH --mem=64G                 # memory per nodes
 #SBATCH --gpus=1
-#SBATCH --constraint="gpuram40G|gpuram48G"
+#SBATCH --constraint="gpuram48G"
 set -e
 
 which python
@@ -20,15 +20,16 @@ for lang in YOR ALS AZE IBO TUR ; do
 
     # Train
     echo Training
-    python training.py --model llama_3.1_base
+    python training.py --model llama_3.1_base --batch_size 2 --num_train_epochs 8 
 
     # Score 
     echo Scoring
-    python scoring.py --scope valid_native --model_name llama_3.1_base --question_type multiple_choice
+    python scoring.py --scope valid_native --model_name llama_3.1_base --question_type multiple_choice --lang $lang
 
     # Metric
     echo Metric
     python metric.py --scope valid_native --answer_source scores --question_type multiple_choice --lang $lang
+    python metric.py --scope valid_native --answer_source generated --question_type multiple_choice --lang $lang
 
     # Move to folder
     echo Move to folder

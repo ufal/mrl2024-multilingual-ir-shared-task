@@ -10,13 +10,14 @@ import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 from tqdm import tqdm
 from itertools import permutations
-from __init__ import validation_mc_folder, test_mc_folder, validation_open_folder, test_open_folder, collection_mt_folder, results_folder, prompt_lang_mapping, get_model_path_by_name, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages
+from __init__ import validation_mc_folder, test_mc_folder, validation_open_folder, test_open_folder, collection_mt_folder, results_folder, prompt_lang_mapping, get_model_path_by_name, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages, language_code_ds_to_mrl
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--strategy", default="question_level", type=str, help="The name of the evaluation strategy, can be answer_level, question_level")
 parser.add_argument("--scope", default="valid_translated", type=str, help="The name of the set to be evaluated. Can be one of valid_native, valid_translated.")
 parser.add_argument("--model_name", default="llama_3.1_base", type=str, help="The name of the model to be used. Can be one of aya_101_hf, llama_3.0_base, llama_3.0_large, llama_3.1_base.")
 parser.add_argument("--question_type", default="multiple_choice", type=str, help="The type of the question to be evaluated. Can be one of multiple_choice, open.")
+parser.add_argument("--lang", default=None, help="If given, only use files in this language.")
 
 from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration
 from transformers.models.t5.tokenization_t5_fast import T5TokenizerFast
@@ -286,26 +287,33 @@ def get_usefull_parameters(args):
         
         if args.scope == "valid_native":
             language_ids = mc_qa_native_languages
+            if args.lang is not None:
+                language_ids = [language_code_ds_to_mrl[args.lang]]
             file_fn = lambda language_id: os.path.join(validation_mc_folder, f"val_labeled_MC_{language_id}.csv")
 
         elif args.scope == "valid_translated":
             language_ids = mc_qa_translated_languages
+            if args.lang is not None:
+                language_ids = [args.lang]
             file_fn = lambda language_id: os.path.join(collection_mt_folder, f"mrl.{language_id}.val.tsv")
             csv_sep = '\t'
             english_prompts = True
 
         elif args.scope == "test_native":
             language_ids = mc_qa_native_languages
+            if args.lang is not None:
+                language_ids = [language_code_ds_to_mrl[args.lang]]
             file_fn = lambda language_id: os.path.join(test_mc_folder, f"MC_{language_id}_test.predict")
 
     elif args.question_type == "open":
-        
+        language_ids = open_qa_native_languages
+        if args.lang is not None:
+            language_ids = [language_code_ds_to_mrl[args.lang]]
+
         if args.scope == "valid_native":
-            language_ids = open_qa_native_languages
             file_fn = lambda language_id: os.path.join(validation_open_folder, f"QA_{language_id}_Val.csv")
 
         elif args.scope == "test_native":
-            language_ids = open_qa_native_languages
             file_fn = lambda language_id: os.path.join(test_open_folder, f"QA_{language_id}_test.predict")
 
     return language_ids, file_fn, csv_sep, english_prompts
