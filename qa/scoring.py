@@ -253,6 +253,9 @@ def export_submission_choices(df, model_name, df_path):
 
 def export_submission_open(df, model_name, df_path):
     df['prediction'] = df.pop('generated_text')
+    df['prediction'] = df['prediction'].str.replace('<pad>', '')
+    df['prediction'] = df['prediction'].str.replace('</s>', '')
+    df['prediction'] = df['prediction'].str.strip()
 
     submit_path = os.path.join(results_folder, model_name, os.path.basename(df_path))
     df.to_csv(submit_path, sep=',', index=False)
@@ -333,7 +336,7 @@ def get_usefull_parameters(args):
             file_fn = lambda language_id: os.path.join(test_mc_folder, f"MC_{language_id}_test.predict")
 
     elif args.question_type == "open":
-        language_ids = open_qa_native_languages
+        language_ids = mc_qa_native_languages
         if args.lang is not None:
             language_ids = [language_code_ds_to_mrl[args.lang]]
 
