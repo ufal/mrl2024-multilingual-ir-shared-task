@@ -39,12 +39,12 @@ SHARED_TASK_2023_VAL_LANGS = {
 
 SHARED_TASK_2024_VAL_LANGS = SHARED_TASK_2023_VAL_LANGS
 
-ENTS = ["PER", "ORG", "LOC", "DATE"]
+ENTS = ["PER", "ORG", "LOC"]
 
 TAG_LIST = [
-    "O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-DATE", "I-DATE"]
+    "O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
 
-SPACY_TYPES = ["PERSON", "ORG", "LOC", "DATE", "GPE", "TIME"]
+SPACY_TYPES = ["PERSON", "ORG", "LOC", "GPE"]
 
 
 rule all:
@@ -52,7 +52,7 @@ rule all:
         expand("task_2024_experiments/{method}/{lang}/{split}.score",
                lang=SHARED_TASK_2024_VAL_LANGS.keys(),
                split=["validation"],
-               method=["spacy", "gliner-eng", "gliner-multi", "uner", "gliner-multi-tuned", "uner-tuned"])
+               method=["spacy", "gliner-eng", "gliner-multi"]) #, "uner", "gliner-multi-tuned", "uner-tuned"])
 
 
 localrules: prepare_submission_conll, output_as_conll, download_2023_validation, download_2024_validation
@@ -231,8 +231,6 @@ rule ner_with_spacy:
                         ent_type = "PER"
                     elif ent_type == "GPE":
                         ent_type = "LOC"
-                    elif ent_type == "TIME":
-                        ent_type = "DATE"
                     elif ent_type == "FAC":
                         ent_type = "LOC"
                     tags.append(token.ent_iob_ + "-" + ent_type)

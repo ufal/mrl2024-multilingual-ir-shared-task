@@ -60,7 +60,6 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
     logging.info("Loading the GLiNER model.")
     model = GLiNER.from_pretrained(gliner_model_path)
     model._keys_to_ignore_on_save = None
-    labels = ["person", "organization", "location", "date"]
 
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -114,7 +113,7 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
 def run_gliner(f_input, f_output, gliner_model_path):
     logging.info("Loading the GLiNER model.")
     model = GLiNER.from_pretrained(gliner_model_path)
-    labels = ["person", "organization", "location", "date"]
+    labels = ["person", "organization", "location"]
     logging.info("Model loaded, processing the input file.")
     for l_no, line in enumerate(f_input):
         line = line.strip()
@@ -164,8 +163,6 @@ def run_gliner(f_input, f_output, gliner_model_path):
                 tag = "ORG"
             elif entity["label"] == "location":
                 tag = "LOC"
-            elif entity["label"] == "date":
-                tag = "DATE"
             else:
                 raise ValueError(f"Unknown entity label: {entity['label']}")
             if token_start_idx >= len(tags):

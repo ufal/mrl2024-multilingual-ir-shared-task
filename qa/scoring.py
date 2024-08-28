@@ -6,6 +6,7 @@ import json
 import random
 import sys
 import argparse
+import numpy as np
 
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 from tqdm import tqdm
@@ -24,6 +25,8 @@ from transformers.models.t5.tokenization_t5_fast import T5TokenizerFast
 
 # <bound method GenerationMixin.generate of T5ForConditionalGeneration
 from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration
+
+scores_list = [f'{answer_id}_score' for answer_id in ["A", "B", "C", "D"]]
 
 def get_llama3_yes_logit(model, tokenizer, text, device, yes_id):
     inputs = tokenizer(text, return_tensors="pt").to(device)
@@ -237,6 +240,23 @@ def shuffle_answers(df):
 
     return samples
 
+def export_submission_choices(df, model_name, df_path):
+    scores = df[scores_list].astype(float).values
+    predictions = np.argmax(scores, axis=1).tolist()
+    df["prediction"] = [chr(ord("A") + pred) for pred in predictions]
+
+    for key in scores_list + ['generated_text']:
+        df.pop(key)
+
+    submit_path = os.path.join(results_folder, model_name, os.path.basename(df_path))
+    df.to_csv(submit_path, sep=',', index=False)
+
+def export_submission_open(df, model_name, df_path):
+    df['prediction'] = df.pop('generated_text')
+
+    submit_path = os.path.join(results_folder, model_name, os.path.basename(df_path))
+    df.to_csv(submit_path, sep=',', index=False)
+
 def apply_inference(model, model_name, tokenizer, device, language_ids, file_fn, strategy, terminators, csv_sep, english_prompts, using_s_tok, question_type):
     for language_id in language_ids:
         print("Starting to score language: ", language_id)
@@ -276,8 +296,15 @@ def apply_inference(model, model_name, tokenizer, device, language_ids, file_fn,
             
             final_samples.append(sample)
 
-        scores_path = os.path.join(results_folder, model_name, os.path.basename(file_fn(language_id)) + "_scores.tsv")
-        pd.DataFrame(final_samples).to_csv(scores_path, sep='\t', index=False)
+        df = pd.DataFrame(final_samples)
+
+        scores_path = os.path.join(results_folder, model_name, os.path.basename(df_path) + "_scores.tsv")
+        df.to_csv(scores_path, sep='\t', index=False)
+        
+        if question_type == "multiple_choice":
+            export_submission_choices(df, model_name, df_path)
+        elif question_type == "open":
+            export_submission_open(df, model_name, df_path)
 
 def get_usefull_parameters(args):
     csv_sep = ','
