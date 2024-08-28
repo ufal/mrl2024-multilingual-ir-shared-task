@@ -33,7 +33,7 @@ class MultipleChoiceDataset(Dataset):
         self.scope = scope
         self.df_path = os.path.join(crafted_folder, f"{scope}_native.tsv")
 
-        self.samples = pd.read_csv(self.df_path, sep='\t').to_dict('records')
+        self.samples = pd.read_csv(self.df_path, sep='\t', lineterminator='\n').to_dict('records')
         self.tokenizer = get_tokenizer_by_name(tokenizer_name)
 
     def __len__(self):
@@ -61,7 +61,7 @@ class ChatPromptDataset(Dataset):
         self.scope = scope
         self.df_path = os.path.join(crafted_folder, f"{scope}_native.tsv")
 
-        self.samples = pd.read_csv(self.df_path, sep='\t').to_dict('records')
+        self.samples = pd.read_csv(self.df_path, sep='\t', lineterminator='\n').to_dict('records')
         
         if tokenizer is None:
             raise AttributeError("Tokenizer must be provided")   
@@ -73,7 +73,7 @@ class ChatPromptDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.samples[idx]
 
-        lang_id = language_code_ds_to_mrl.get(sample["lang_code"])
+        lang_id = language_code_ds_to_mrl.get(sample["lang_code"])   
         prompt_mapping = prompt_lang_mapping.get(lang_id)
 
         question = sample.get("question")
@@ -154,10 +154,11 @@ def gather_collection(lang = None):
             basename = os.path.basename(filename)
             lang_code = basename.split('.')[1]
             if lang is None or lang_code == lang:                
-                df = pd.read_csv(filename, sep='\t')
+                df = pd.read_csv(filename, sep='\t', lineterminator='\n')
+                df.columns = [i.strip() for i in df.columns]
                 df["lang_code"] = lang_code
                 df["source"] = ds
-                collection = pd.concat([collection, df], ignore_index=True)
+                collection = pd.concat([collection, df], ignore_index=True)    
     return collection
 
 def view_token_statistics(collection):
@@ -172,7 +173,6 @@ def view_token_statistics(collection):
             
 def main(args):
     collection = gather_collection(args.lang)
-
     collection["label"] = collection["label"].str.strip()
     valid_labels_mask = collection['label'].isin(["A", "B", "C", "D"])
     collection = collection[valid_labels_mask]
@@ -192,7 +192,6 @@ def main(args):
 
         train_df = pd.concat([train_df, train], ignore_index=True)
         valid_df = pd.concat([valid_df, valid], ignore_index=True)
-
     train_path = os.path.join(crafted_folder, "train_native.tsv")
     train_df.to_csv(train_path, sep='\t', index=False)
 
