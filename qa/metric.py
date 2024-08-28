@@ -5,8 +5,6 @@ import numpy as np
 import argparse
 
 from sklearn.metrics import accuracy_score
-from nltk.translate.chrf_score import sentence_chrf
-from rouge_score import rouge_scorer
 from evaluate import load
 from transformers import AutoTokenizer
 
@@ -45,7 +43,8 @@ def compute_accuracy(language_ids, file_fn, answer_source):
     print(f"Mean Accuracy for all languages: ", np.mean(acc_list))
 
 def compute_string_metrics(language_ids, file_fn):
-    rouger = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=False)
+    chrf_scorer = load("chrf")
+    rouge_scorer = load("rouge")
     bertscorer = load("bertscore")
 
     for language_id in language_ids:
@@ -55,26 +54,25 @@ def compute_string_metrics(language_ids, file_fn):
         answers = df["answer"]
         predicted_list = []
 
-        chrf_list = []
-        rouge_l_list = []
         for _, row in df.iterrows():
-            answer = row["answer"]
-            predicted = row["generated_text"].replace("<|eot_id|>", "").replace("<pad>", "")
+            predicted = row["generated_text"].replace("<|eot_id|>", "").replace("<pad>", "").replace('<\s>', '')
             predicted_list.append(predicted)
-
-            chrf = sentence_chrf(answer, predicted)
-            chrf_list.append(chrf)
-
-            rouge_l = rouger.score(answer, predicted)["rougeL"].fmeasure
-            rouge_l_list.append(rouge_l)
         
-        bert_scores = bertscorer.compute(references=answers, predictions=predicted_list, lang=language_id.lower())['f1']
+        chrf_scores = chrf_scorer.compute(references=answers, predictions=predicted_list, word_order=0)["score"]
+        chrf1_scores = chrf_scorer.compute(references=answers, predictions=predicted_list, word_order=1)["score"]
+        chrf2_scores = chrf_scorer.compute(references=answers, predictions=predicted_list, word_order=2)["score"]
+
+        rouge_scores = rouge_scorer.compute(references=answers, predictions=predicted_list)["rougeL"]
+        bert_scores = bertscorer.compute(references=answers, predictions=predicted_list, model_type="roberta-base")['f1']
         
-        chrf_mean = np.mean(chrf_list)
-        rouge_l_mean = np.mean(rouge_l_list)
+        chrf_mean = np.mean(chrf_scores)
+        chrf1_mean = np.mean(chrf1_scores)
+        chrf2_mean = np.mean(chrf2_scores)
+
+        rouge_l_mean = np.mean(rouge_scores)
         bert_scores_mean = np.mean(bert_scores)
 
-        print(f"{language_id}: chfr = {chrf_mean}, rouge_l = {rouge_l_mean}, bert_score = {bert_scores_mean}")
+        print(f"{language_id}: chfr = {chrf_mean}, chfr1 = {chrf1_mean}, chfr2 = {chrf2_mean}, rouge_l = {rouge_l_mean}, bert_score = {bert_scores_mean}")
 
 def check_token_stats(language_ids, file_fn):
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
