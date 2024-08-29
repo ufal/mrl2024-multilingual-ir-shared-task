@@ -2,11 +2,13 @@ import logging
 import os
 
 import torch
+import wandb
 from datasets import Dataset
 from gliner import GLiNER
 from gliner.data_processing import GLiNERDataset
 from gliner.data_processing.collator import DataCollatorWithPadding
 from gliner.training import Trainer, TrainingArguments
+from collect_data import collect_data
 
 logging.basicConfig(
     format="%(asctime)s: %(message)s", level=logging.INFO)
@@ -56,7 +58,8 @@ def ner_tags_to_spans(sample):
     return {"tokenized_text": sample["tokens"], "ner": spans, "label": labels}
 
 
-def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str, model_save_path: str):
+def tune_gliner(train_data: Dataset, dev_data: Dataset, gliner_model_path: str, model_save_path: str,
+                learning_rate=1e-5, epochs=5, weight_decay=0.01, test_data=None):
     logging.info("Loading the GLiNER model.")
     model = GLiNER.from_pretrained(gliner_model_path)
     model._keys_to_ignore_on_save = None
@@ -66,24 +69,24 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
     model.to(device)
 
     train_data = [ner_tags_to_spans(sample) for sample in train_data]
-    test_data = [ner_tags_to_spans(sample) for sample in test_data]
+    dev_data = [ner_tags_to_spans(sample) for sample in dev_data]
 
     train_dataset = GLiNERDataset(train_data, model.config, data_processor=model.data_processor)
-    test_dataset = GLiNERDataset(test_data, model.config, data_processor=model.data_processor)
+    dev_dataset = GLiNERDataset(dev_data, model.config, data_processor=model.data_processor)
 
     data_collator = DataCollatorWithPadding(model.config)
 
     training_args = TrainingArguments(
         output_dir="models",
-        learning_rate=5e-6,
-        weight_decay=0.01,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
         others_lr=1e-5,
         others_weight_decay=0.01,
         lr_scheduler_type="linear",  # cosine
         warmup_ratio=0.1,
         per_device_train_batch_size=16,
         per_device_eval_batch_size=16,
-        num_train_epochs=5,
+        num_train_epochs=epochs,
         eval_strategy="steps",
         eval_steps=5000,
         save_strategy="steps",
@@ -93,6 +96,7 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
         load_best_model_at_end=True,
         dataloader_num_workers=8,
         use_cpu=False,
+        overwrite_output_dir=True,
         run_name="gliner_tuning"
     )
 
@@ -100,7 +104,7 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=test_dataset,
+        eval_dataset=dev_dataset,
         tokenizer=model.data_processor.transformer_tokenizer,
         data_collator=data_collator,
     )
@@ -108,6 +112,14 @@ def tune_gliner(train_data: Dataset, test_data: Dataset, gliner_model_path: str,
     base_path = os.path.basename(model_save_path)
     os.makedirs(base_path, exist_ok=True)
     trainer.save_model(model_save_path)
+
+    if test_data:
+        test_data = [ner_tags_to_spans(sample) for sample in test_data]
+        test_dataset = GLiNERDataset(test_data, model.config, data_processor=model.data_processor)
+        test_loss = trainer.evaluate(test_dataset)['eval_loss']
+        return test_loss
+    else:
+        return None
 
 
 def run_gliner(f_input, f_output, gliner_model_path):
@@ -180,3 +192,51 @@ def run_gliner(f_input, f_output, gliner_model_path):
             logging.info(f"Processed {l_no + 1} lines.")
         print(" ".join(tags), file=f_output)
     logging.info("GliNER processing finished.")
+
+
+def main_sweep():
+    wandb.init(project="gliner-sweep")
+    loss = sweep_train(wandb.config)
+    wandb.log({"loss": loss})
+
+
+def sweep_train(config):
+    train_data = collect_data(config.datasets, "train")
+    dev_data = collect_data(config.datasets, "dev")
+    loss = tune_gliner(train_data, dev_data, gliner_model_path="urchade/gliner_multi-v2.1",
+                       model_save_path="./gliner-multi-tuned-sweep", learning_rate=config.learning_rate,
+                       epochs=config.epochs, weight_decay=config.weight_decay, test_data=test_data)
+    return loss
+
+
+if __name__ == "__main__":
+    os.environ["WANDB_PROJECT"] = "my-first-sweep"
+
+    test_data = collect_data(["de_sw", "tr_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "aze"], "test")
+    sweep_configuration = {
+        "method": "bayes",
+        "metric": {"goal": "minimize", "name": "loss"},
+        "parameters": {
+            "learning_rate": {
+                "distribution": "uniform",
+                "min": 0.00001,
+                "max": 0.00004
+            },
+            "epochs": {"min": 3, "max": 5},
+            "weight_decay": {
+                "distribution": "uniform",
+                "min": 0,
+                "max": 0.02
+            },
+            "datasets": {
+                "values": [
+                    ["de_DE", "tr_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "aze"],
+                    ["de_DE", "de_SW", "tr_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "aze"],
+                    ["de_DE", "tr_polyglot", "id_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "uzb_gh", "aze"]
+                ]
+            },
+        },
+    }
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project="my-first-sweep")
+    wandb.agent(sweep_id, function=main_sweep, count=10)
+
