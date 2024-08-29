@@ -15,6 +15,12 @@ __pycache__/
 # C extensions
 *.so
 
+.idea/
+ner/.snakemake
+ner/wandb
+*/*_data
+*/*_experiments
+
 # Distribution / packaging
 .Python
 build/
