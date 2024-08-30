@@ -299,9 +299,10 @@ def apply_inference(model, model_name, tokenizer, device, language_ids, file_fn,
             
             final_samples.append(sample)
 
-        df = pd.DataFrame(final_samples)
-
-        scores_path = os.path.join(results_folder, model_name, os.path.basename(df_path) + "_scores.tsv")
+        df = pd.DataFrame(final_samples)        
+        folder = os.path.join(results_folder, model_name)
+        os.makedirs(folder, exist_ok=True)
+        scores_path = os.path.join(folder, os.path.basename(df_path) + "_scores.tsv")
         df.to_csv(scores_path, sep='\t', index=False)
         
         if question_type == "multiple_choice":

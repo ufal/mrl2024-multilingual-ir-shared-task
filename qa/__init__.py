@@ -2,6 +2,7 @@ import os
 import random
 import torch
 import numpy as np
+import glob
 
 random.seed(10)
 torch.manual_seed(101)
@@ -44,14 +45,16 @@ def get_model_path_by_name(name):
     if name == "aya_101_hf":
         model_original_path = aya_model_name
         model_local_path = aya_model_name
-
+    elif name == "aya_101_hf_tuned":
+        model_original_path = aya_model_name
+        model_local_path = glob.glob("outputs/aya_101_hf/checkpoint-*")[0]
     elif name == "llama_3.0_base":
         model_original_path = llama3_3_0_base_original_path
         model_local_path = llama3_3_0_base_not_sharded_path
 
     elif name == "llama_3.0_tuned":
-        model_original_path = llama3_3_0_base_original_path
-        model_local_path = "outputs/llama_3.0_base/checkpoint-7152"
+        model_original_path = llama3_3_0_base_original_path        
+        model_local_path = glob.glob("outputs/llama_3.0_base/checkpoint-*")[0]
 
     elif name == "llama_3.0_large":
         model_original_path = llama3_3_0_large_original_path
@@ -63,7 +66,7 @@ def get_model_path_by_name(name):
 
     elif name == "llama_3.1_tuned":
         model_original_path = llama3_3_1_base_original_path
-        model_local_path = "outputs/llama_3.1_base/checkpoint-36890"
+        model_local_path = glob.glob("outputs/llama_3.1_base/checkpoint-*")[0]
 
     return model_original_path, model_local_path
 
