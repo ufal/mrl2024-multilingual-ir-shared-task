@@ -5,7 +5,7 @@ from __init__ import collection_folder, crafted_folder, prompt_lang_mapping, lan
 from glob import glob
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
-from transformers import XLMRobertaTokenizer, DataCollatorWithPadding, DataCollatorForLanguageModeling
+from transformers import XLMRobertaTokenizer, DataCollatorWithPadding, DataCollatorForLanguageModeling, DataCollatorForSeq2Seq
 from transformers.data.data_collator import pad_without_fast_tokenizer_warning
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer
@@ -69,11 +69,9 @@ class ChatPromptDataset(Dataset):
 
     def __len__(self):
         return len(self.samples)
-
-    def __getitem__(self, idx):
-        sample = self.samples[idx]
-
-        lang_id = language_code_ds_to_mrl.get(sample["lang_code"])   
+    
+    def get_messages_from_sample(self, sample):
+        lang_id = language_code_ds_to_mrl.get(sample["lang_code"])
         prompt_mapping = prompt_lang_mapping.get(lang_id)
 
         question = sample.get("question")
@@ -88,7 +86,7 @@ class ChatPromptDataset(Dataset):
 
         answer_str = sample[sample['label']]
 
-        messages = [
+        return [
             {
                 "role": "system", 
                 "content": sys_header
@@ -102,6 +100,10 @@ class ChatPromptDataset(Dataset):
                 "content": f"{add_header} {sample['label']}) {answer_str} "
             },
         ]
+
+    def __getitem__(self, idx):
+        sample = self.samples[idx]
+        messages = self.get_messages_from_sample(sample)
 
         full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
         return {
@@ -117,6 +119,22 @@ class IsolatedChatDataset(ChatPromptDataset):
 
         return {
             "input_ids": input_dict["input_ids"][0],
+        }
+    
+class Seq2SeqDataset(ChatPromptDataset):
+    def __getitem__(self, idx):
+        sample = self.samples[idx]
+        messages = self.get_messages_from_sample(sample)
+
+        enc_str = messages[1]["content"]
+        enc_dict = self.tokenizer(enc_str, return_tensors="pt")
+
+        dec_str = self.tokenizer.pad_token + ' ' + messages[2]["content"] 
+        dec_dict = self.tokenizer(dec_str, return_tensors="pt")
+
+        return {
+            "input_ids": enc_dict["input_ids"][0],
+            "labels": dec_dict["input_ids"][0],
         }
 
 
@@ -134,8 +152,8 @@ def test_dataset():
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
     tokenizer.pad_token = tokenizer.eos_token
     
-    ds = IsolatedChatDataset("train", tokenizer=tokenizer)
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    ds = Seq2SeqDataset("train", tokenizer=tokenizer)
+    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer)
     
     dataloader = DataLoader(ds, batch_size=2, shuffle=True, collate_fn=data_collator)
     for batch in dataloader:
@@ -143,7 +161,7 @@ def test_dataset():
         print(batch.keys())
 
 
-dataset_names = ["belebele", "afrimmlu", "m_mmlu", "mmlu_tr", "naija_rc", "exams"]
+dataset_names = ["belebele", "afrimmlu", "m_mmlu", "mmlu_tr", "naija_rc"]#, "exams"]
 
 def gather_collection(lang = None):
     collection = pd.DataFrame()
@@ -201,32 +219,38 @@ def main(args):
 def data_generator(constant_length_iterator): 
     yield from constant_length_iterator
 
-def get_extended_chat_dataset(scope, tokenizer, is_circular=False):
+def get_extended_chat_dataset(scope, model_name, tokenizer, is_circular=False):
 
-    if is_circular:
-        dataset = ChatPromptDataset(scope, tokenizer)
-
-        constant_length_iterator = ConstantLengthDataset(
-            tokenizer,
-            dataset,
-            dataset_text_field="text",
-            formatting_func=None,
-            seq_length=2048,
-            infinite=False,
-            num_of_sequences=1024,
-            chars_per_token=3.6,
-            eos_token_id=tokenizer.eos_token_id,
-            append_concat_token=True,
-            add_special_tokens=True,
-        )
-        dataset = datasets.Dataset.from_generator(
-            data_generator, gen_kwargs={"constant_length_iterator": constant_length_iterator}
-        )
-        data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-        
+    if model_name.startswith("aya"):
+        dataset = Seq2SeqDataset(scope, tokenizer=tokenizer)
+        data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer)
     else:
-        dataset = IsolatedChatDataset(scope, tokenizer=tokenizer)
-        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+        # LLAMA 3 based datasets
+
+        if is_circular:
+            dataset = ChatPromptDataset(scope, tokenizer)
+
+            constant_length_iterator = ConstantLengthDataset(
+                tokenizer,
+                dataset,
+                dataset_text_field="text",
+                formatting_func=None,
+                seq_length=2048,
+                infinite=False,
+                num_of_sequences=1024,
+                chars_per_token=3.6,
+                eos_token_id=tokenizer.eos_token_id,
+                append_concat_token=True,
+                add_special_tokens=True,
+            )
+            dataset = datasets.Dataset.from_generator(
+                data_generator, gen_kwargs={"constant_length_iterator": constant_length_iterator}
+            )
+            data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+            
+        else:
+            dataset = IsolatedChatDataset(scope, tokenizer=tokenizer)
+            data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
     return dataset, data_collator
 

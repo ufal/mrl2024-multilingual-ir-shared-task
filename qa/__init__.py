@@ -27,12 +27,17 @@ mc_qa_native_languages = ["ALS", "AZ", "IG", "TR", "YO"]
 mc_qa_translated_languages = ["ALS", "AZE", "IBO", "TUR", "YOR"]
 open_qa_native_languages = mc_qa_native_languages + ["ID", "UZ"]
 
+outputs_mrl_folder = "/home/manea/personal_work_troja/outputs_mrl"
+
 # 3.0 8B
 llama3_3_0_base_original_path = "meta-llama/Meta-Llama-3-8B-Instruct"
 llama3_3_0_base_not_sharded_path = "/home/manea/personal_work_troja/.cache/huggingface/hub/models--meta-llama--Meta-Llama-3-8B-Instruct/not_sharded/llama-3-8B"
 
-# 3.0 70B - estimated on 150GB 0 - not recommended
+# 3.0 70B - 132GB - not recommended
 llama3_3_0_large_original_path = "meta-llama/Meta-Llama-3-70B-Instruct"
+
+# 3.0 70B - 132GB- not recommended
+llama3_3_1_large_original_path = "meta-llama/Meta-Llama-3.1-70B-Instruct"
 
 # 3.1 8B
 llama3_3_1_base_original_path = "meta-llama/Meta-Llama-3.1-8B-Instruct"
@@ -51,7 +56,7 @@ def get_model_path_by_name(name):
 
     elif name == "llama_3.0_tuned":
         model_original_path = llama3_3_0_base_original_path
-        model_local_path = "outputs/llama_3.0_base/checkpoint-7152"
+        model_local_path = "outputs/llama_3.0_base/checkpoint-11520"
 
     elif name == "llama_3.0_large":
         model_original_path = llama3_3_0_large_original_path
@@ -60,6 +65,10 @@ def get_model_path_by_name(name):
     elif name == "llama_3.1_base":
         model_original_path = llama3_3_1_base_original_path
         model_local_path = llama3_3_1_base_not_sharded_path
+
+    elif name == "llama_3.1_large":
+        model_original_path = llama3_3_1_large_original_path
+        model_local_path = llama3_3_1_large_original_path
 
     elif name == "llama_3.1_tuned":
         model_original_path = llama3_3_1_base_original_path

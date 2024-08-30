@@ -11,7 +11,7 @@ import numpy as np
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 from tqdm import tqdm
 from itertools import permutations
-from __init__ import validation_mc_folder, test_mc_folder, validation_open_folder, test_open_folder, collection_mt_folder, results_folder, prompt_lang_mapping, get_model_path_by_name, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages, language_code_ds_to_mrl
+from __init__ import validation_mc_folder, test_mc_folder, validation_open_folder, test_open_folder, collection_mt_folder, results_folder, prompt_lang_mapping, get_model_path_by_name, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages, language_code_ds_to_mrl, outputs_mrl_folder
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--strategy", default="question_level", type=str, help="The name of the evaluation strategy, can be answer_level, question_level")
@@ -80,17 +80,18 @@ def get_llama3_letter_logits(model, tokenizer, messages, add_header, answer_toke
         scores[f"{answer_id}_score"] = answer_score
 
     del output
-    with torch.no_grad():
-        outputs = model.generate(
-            input_ids_plus,
-            max_new_tokens=15,
-            eos_token_id=terminators,
-            do_sample=True,
-            temperature=0.6,
-            top_p=0.9,
-        )
+    # to get the results faster
+    # with torch.no_grad():
+    #     outputs = model.generate(
+    #         input_ids_plus,
+    #         max_new_tokens=15,
+    #         eos_token_id=terminators,
+    #         do_sample=True,
+    #         temperature=0.6,
+    #         top_p=0.9,
+    #     )
     
-    scores["generated_text"] = tokenizer.decode(outputs[0, input_ids_plus.shape[1]:])
+    # scores["generated_text"] = tokenizer.decode(outputs[0, input_ids_plus.shape[1]:])
     return scores
     
 def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens):
@@ -246,7 +247,8 @@ def export_submission_choices(df, model_name, df_path):
     df["prediction"] = [chr(ord("A") + pred) for pred in predictions]
 
     for key in scores_list + ['generated_text']:
-        df.pop(key)
+        if key in df.keys():
+            df.pop(key)
 
     submit_path = os.path.join(results_folder, model_name, os.path.basename(df_path))
     df.to_csv(submit_path, sep=',', index=False)
@@ -255,6 +257,7 @@ def export_submission_open(df, model_name, df_path):
     df['prediction'] = df.pop('generated_text')
     df['prediction'] = df['prediction'].str.replace('<pad>', '')
     df['prediction'] = df['prediction'].str.replace('</s>', '')
+    df['prediction'] = df['prediction'].str.replace('<|eot_id|>', '')
     df['prediction'] = df['prediction'].str.strip()
 
     submit_path = os.path.join(results_folder, model_name, os.path.basename(df_path))
@@ -360,7 +363,8 @@ def main(args):
         model_class = AutoModelForSeq2SeqLM
         using_s_tok = False
 
-    model = model_class.from_pretrained(model_local_path, device_map="auto", torch_dtype=torch.bfloat16, max_memory=max_memory, offload_folder="offload")
+    offload_folder = os.path.join(outputs_mrl_folder, "offload")
+    model = model_class.from_pretrained(model_local_path, device_map="auto", torch_dtype=torch.bfloat16, max_memory=max_memory, offload_folder=offload_folder)
     model.gradient_checkpointing_enable()
     
     tokenizer = AutoTokenizer.from_pretrained(model_original_path, use_auth_token=True)

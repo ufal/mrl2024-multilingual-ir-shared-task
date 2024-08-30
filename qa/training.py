@@ -6,12 +6,12 @@ import torch
 import ipdb
 
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from transformers import TrainingArguments, Trainer, DataCollatorWithPadding, XLMRobertaForSequenceClassification, BitsAndBytesConfig, AutoModelForCausalLM, AutoModelForSeq2SeqLM
+from transformers import TrainingArguments, Trainer, DataCollatorWithPadding, XLMRobertaForSequenceClassification, BitsAndBytesConfig, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoConfig
 from trl import SFTTrainer
 from peft import LoraConfig
 
 from datasets_lab import get_tokenizer_by_name, MultipleChoiceDataset, get_extended_chat_dataset
-from __init__ import get_model_path_by_name
+from __init__ import get_model_path_by_name, outputs_mrl_folder
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="xlm-r", type=str, help="The name of the model, can be XLM-R")
@@ -53,7 +53,7 @@ def get_classif_model_and_ds(args):
 
 
 def get_classif_training_arguments(args):
-    output_dir = os.path.join("outputs", f'{args.model_name}')
+    output_dir = os.path.join(outputs_mrl_folder, f'{args.model_name}')
     os.makedirs(output_dir, exist_ok=True)
 
     return TrainingArguments(
@@ -92,8 +92,8 @@ def main_classifier(args):
     )
     trainer.train()
 
-def get_llama_training_arguments(args):
-    output_dir = os.path.join("outputs", f'{args.model_name}')
+def get_training_arguments(args):
+    output_dir = os.path.join(outputs_mrl_folder, f'{args.model_name}')
     os.makedirs(output_dir, exist_ok=True)
 
     return TrainingArguments(
@@ -125,36 +125,40 @@ def get_llama_training_arguments(args):
     )
 
 
-def get_llama_model_and_ds(args):
+def get_model_and_ds(args):
     model_original_path, model_local_path = get_model_path_by_name(args.model_name)
-   
     tokenizer = get_tokenizer_by_name(model_original_path)
+
     # set pad_token_id equal to the eos_token_id if not set
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    # Set reasonable default for models without max length
-    if tokenizer.model_max_length > 100_000:
-        tokenizer.model_max_length = 2048
-
-    train_dataset, data_collator = get_extended_chat_dataset("train", tokenizer=tokenizer)
-    val_dataset, _ = get_extended_chat_dataset("valid", tokenizer=tokenizer)
+    train_dataset, data_collator = get_extended_chat_dataset("train", args.model_name, tokenizer=tokenizer)
+    val_dataset, _ = get_extended_chat_dataset("valid", args.model_name, tokenizer=tokenizer)
 
     return model_local_path, train_dataset, val_dataset, tokenizer, data_collator
 
 def main_llm(args):
-    # inspired from https://github.com/AvisP/LM_Finetune/blob/main/llama-3-finetune-qlora.ipynb
+    model_id, train_dataset, val_dataset, tokenizer, data_collator = get_model_and_ds(args)
+    training_args = get_training_arguments(args)
 
-    model_id, train_dataset, val_dataset, tokenizer, data_collator = get_llama_model_and_ds(args)
-    training_args = get_llama_training_arguments(args)
+    if args.model_name.startswith("llama"):
+        model_class = AutoModelForCausalLM
+        task_type = "CAUSAL_LM"
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"]
+
+    elif args.model_name.startswith("aya"):
+        model_class = AutoModelForSeq2SeqLM
+        task_type = "SEQ_2_SEQ_LM"
+        target_modules=["q", "k", "v", "o"]
 
     peft_config = LoraConfig(
         r=64,
         lora_alpha=16,
         lora_dropout=0.1,
         bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        task_type=task_type,
+        target_modules=target_modules,
     )
 
     # quantization_config = BitsAndBytesConfig(
@@ -168,9 +172,12 @@ def main_llm(args):
         torch_dtype="auto",
         use_cache=False,
         device_map="auto",
+        max_memory={i: '30GiB' for i in range(torch.cuda.device_count())},
+        offload_folder=os.path.join(outputs_mrl_folder, "offload"),
         # quantization_config=quantization_config,
     )
-    model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+    model = model_class.from_pretrained(model_id, **model_kwargs)
+    model.gradient_checkpointing_enable()
 
     trainer = SFTTrainer(
         model=model,
