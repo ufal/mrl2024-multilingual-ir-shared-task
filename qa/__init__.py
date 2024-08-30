@@ -29,6 +29,7 @@ mc_qa_translated_languages = ["ALS", "AZE", "IBO", "TUR", "YOR"]
 open_qa_native_languages = mc_qa_native_languages + ["ID", "UZ"]
 
 outputs_mrl_folder = "/home/manea/personal_work_troja/outputs_mrl"
+# outputs_mrl_folder = "outputs"
 
 # 3.0 8B
 llama3_3_0_base_original_path = "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -50,16 +51,22 @@ def get_model_path_by_name(name):
     if name == "aya_101_hf":
         model_original_path = aya_model_name
         model_local_path = aya_model_name
-    elif name == "aya_101_hf_tuned":
+
+    if name == "aya_101_hf_tuned":
         model_original_path = aya_model_name
-        model_local_path = glob.glob("outputs/aya_101_hf/checkpoint-*")[0]
+
+        searching_path = os.path.join(outputs_mrl_folder, 'aya_101_hf', 'checkpoint-*')
+        model_local_path = glob(searching_path)[0]
+
     elif name == "llama_3.0_base":
         model_original_path = llama3_3_0_base_original_path
         model_local_path = llama3_3_0_base_not_sharded_path
 
     elif name == "llama_3.0_tuned":
-        model_original_path = llama3_3_0_base_original_path        
-        model_local_path = glob.glob("outputs/llama_3.0_base/checkpoint-*")[0]
+        model_original_path = llama3_3_0_base_original_path
+
+        searching_path = os.path.join(outputs_mrl_folder, 'llama_3.0_base', 'checkpoint-*')  
+        model_local_path = glob.glob(searching_path)[0]
 
     elif name == "llama_3.0_large":
         model_original_path = llama3_3_0_large_original_path
@@ -75,7 +82,9 @@ def get_model_path_by_name(name):
 
     elif name == "llama_3.1_tuned":
         model_original_path = llama3_3_1_base_original_path
-        model_local_path = glob.glob("outputs/llama_3.1_base/checkpoint-*")[0]
+
+        searching_path = os.path.join(outputs_mrl_folder, 'llama_3.1_base', 'checkpoint-*')
+        model_local_path = glob.glob(searching_path)[0]
 
     return model_original_path, model_local_path
 
@@ -92,7 +101,8 @@ prompt_lang_mapping = {
 
         "sys_head": "You are an assistant trained to read the following context and answer the question with one of the options A), B), C) or D).",
         "sys_head_open": "You are an assistant trained to read the following context and provide a succinct, accurate, and clear response in the same language.",
-        "add_head": "The correct answer is:"
+        "add_head": "The correct answer is:",
+        "add_head_v2": "It is:"
     },
     "ALS": {
         "yes": "ja",
@@ -105,7 +115,8 @@ prompt_lang_mapping = {
 
         "sys_head_open": "Sie sind ein Assistent, der darin geschult ist, den folgenden Kontext zu lesen und eine prägnante, genaue und klare Antwort in derselben Sprache zu geben.",
         "sys_head": "Sie sind ein Assistent, der darauf trainiert ist, den folgenden Kontext zu lesen und die Frage mit einer der Optionen A), B), C) oder D) zu beantworten.",
-        "add_head": "Die richtige Antwort ist:"
+        "add_head": "Die richtige Antwort ist:",
+        "add_head_v2": "Es ist:"
     },
     "AZ": {
         "yes": "bəli",
@@ -118,7 +129,8 @@ prompt_lang_mapping = {
 
         "sys_head_open": "Siz aşağıdakı konteksti oxumaq və eyni dildə qısa, dəqiq və aydın cavab vermək üçün təlim keçmiş köməkçisiniz.",
         "sys_head": "Siz aşağıdakı konteksti oxumaq və suala A), B), C) və ya D) variantlarından biri ilə cavab vermək üçün təlim keçmiş köməkçisiniz.",
-        "add_head": "Düzgün cavab budur:"
+        "add_head": "Düzgün cavab budur:",
+        "add_head_v2": "elədir:"
     },
     "IG": {
         "yes": "ee",
@@ -131,7 +143,8 @@ prompt_lang_mapping = {
 
         "sys_head_open": "Ị bụ onye inyeaka a zụrụ azụ ịgụ ihe ndị a ma nye azịza dị nkenke, ziri ezi na nke doro anya n'otu asụsụ.",
         "sys_head": "Ị bụ onye inyeaka a zụrụ azụ ịgụ ihe ndị a ma jiri otu nhọrọ A), B), C) ma ọ bụ D zaa ajụjụ ahụ.",
-        "add_head": "Azịza ziri ezi bụ:"
+        "add_head": "Azịza ziri ezi bụ:",
+        "add_head_v2": "Ọ bụ:"
     },
     "TR": {
         "yes": "evet",
@@ -144,7 +157,8 @@ prompt_lang_mapping = {
         
         "sys_head_open": "Aşağıdaki bağlamı okuyup aynı dilde özlü, doğru ve açık bir yanıt verebilmek için eğitilmiş bir asistansınız.",
         "sys_head": "Aşağıdaki bağlamı okuyup soruyu A), B), C) veya D) seçeneklerinden biriyle yanıtlamak üzere eğitilmiş bir asistansınız.",
-        "add_head": "Doğru cevap:"
+        "add_head": "Doğru cevap:",
+        "add_head_v2": "Bu:"
     },
     "YO": {
         "yes": "beeni",
@@ -158,7 +172,8 @@ prompt_lang_mapping = {
         "sys_head_open": "Iwọ jẹ oluranlọwọ ti o kọ ẹkọ lati ka ọrọ-ọrọ atẹle ati pese ṣoki, deede, ati idahun ti o ṣe kedere ni ede kanna.",
         "sys_head": "Iwọ jẹ oluranlọwọ ti o kọ ẹkọ lati ka ipo atẹle ati dahun ibeere naa pẹlu ọkan ninu awọn aṣayan A), B), C) tabi D).",
         # "add_head": "The correct answer is:",
-        "add_head": "Idahun to pe ni:"
+        "add_head": "Idahun to pe ni:",
+        "add_head_v2": "O jẹ:"
     },
     "ID": {
         "yes": "ya",
@@ -171,7 +186,8 @@ prompt_lang_mapping = {
 
         "sys_head_open": "Anda adalah asisten yang terlatih untuk membaca konteks berikut dan memberikan respons yang ringkas, akurat, dan jelas dalam bahasa yang sama.",
         "sys_head": "Anda adalah asisten yang terlatih untuk membaca konteks berikut dan menjawab pertanyaan dengan salah satu pilihan A), B), C) atau D).",
-        "add_head": "Jawaban yang benar adalah:"
+        "add_head": "Jawaban yang benar adalah:",
+        "add_head_v2": "Dia:"
     },
     "UZ": {
         "yes": "ha",
@@ -184,7 +200,8 @@ prompt_lang_mapping = {
         
         "sys_head_open": "Siz quyidagi kontekstni o'qish va bir xil tilda qisqa, aniq va aniq javob berishga o'rgatilgan yordamchisiz.",
         "sys_head": "Siz quyidagi kontekstni o'qish va savolga A), B), C) yoki D) variantlaridan biri bilan javob berishga o'rgatilgan yordamchisiz.",
-        "add_head": "To'g'ri javob:"
+        "add_head": "To'g'ri javob:",
+        "add_head_v2": "Bu:"
     },
 }
 

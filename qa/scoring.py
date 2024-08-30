@@ -12,6 +12,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2Se
 from tqdm import tqdm
 from itertools import permutations
 from __init__ import validation_mc_folder, test_mc_folder, validation_open_folder, test_open_folder, collection_mt_folder, results_folder, prompt_lang_mapping, get_model_path_by_name, mc_qa_native_languages, mc_qa_translated_languages, open_qa_native_languages, language_code_ds_to_mrl, outputs_mrl_folder
+from ensemble import np_softmax
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--strategy", default="question_level", type=str, help="The name of the evaluation strategy, can be answer_level, question_level")
@@ -93,6 +94,70 @@ def get_llama3_letter_logits(model, tokenizer, messages, add_header, answer_toke
     
     # scores["generated_text"] = tokenizer.decode(outputs[0, input_ids_plus.shape[1]:])
     return scores
+
+def get_llama3_average_logits(model, tokenizer, messages, add_header, add_header_v2, answer_tokens, terminators):
+    input_ids = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        return_tensors="pt",
+    ).to(model.device)
+
+    candidate_additionals = [
+        add_header,
+        add_header_v2,
+        ''
+    ]
+    agg_scores = {f"{answer_id}_score": [] for answer_id in answer_tokens.keys()}
+
+    for additional in candidate_additionals:
+        additional_ids = tokenizer.encode(additional, return_tensors="pt").to(model.device)
+        input_ids_plus = torch.hstack([input_ids, additional_ids[:, 1:]])
+
+        with torch.no_grad():
+            output = model(input_ids=input_ids_plus)
+            next_logits = output.logits[0, -1]
+
+        answer_scores = np.array([next_logits[answer_tokens[answer_id]].item() for answer_id in ["A", "B", "C", "D"]])
+        answer_scores = np_softmax(answer_scores)
+
+        for answer_id, answer_score in zip(scores_list, answer_scores):
+            agg_scores[answer_id].append(answer_score)
+
+        del output
+    
+    print(agg_scores)
+    scores = {answer_id: np.mean(np.array(answer_scores)) for answer_id, answer_scores in agg_scores.items()}
+    return scores
+
+def get_aya_average_logits(model, tokenizer, messages, add_header, add_header_v2, answer_tokens, terminators):
+    input_dict = tokenizer(messages[1]["content"], return_tensors="pt").to(model.device)
+
+    candidate_additionals = [
+        tokenizer.pad_token + ' ' + add_header,
+        tokenizer.pad_token + ' ' + add_header_v2,
+        tokenizer.pad_token + ' '
+    ]
+    agg_scores = {f"{answer_id}_score": [] for answer_id in answer_tokens.keys()}
+
+    for additional in candidate_additionals:
+        additional_ids = tokenizer.encode(additional, return_tensors="pt").to(model.device)
+        additional_ids = additional_ids[:, :-1]
+
+        with torch.no_grad():
+            output = model(**input_dict, decoder_input_ids=additional_ids)
+            next_logits = output.logits[0, -1]
+
+        answer_scores = np.array([next_logits[answer_tokens[answer_id]].item() for answer_id in ["A", "B", "C", "D"]])
+        answer_scores = np_softmax(answer_scores)
+
+        for answer_id, answer_score in zip(scores_list, answer_scores):
+            agg_scores[answer_id].append(answer_score)
+
+        del output
+    
+    print(agg_scores)
+    scores = {answer_id: np.mean(np.array(answer_scores)) for answer_id, answer_scores in agg_scores.items()}
+    return scores
     
 def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens):
     input_dict = tokenizer(messages[1]["content"], return_tensors="pt").to(model.device)
@@ -111,17 +176,16 @@ def get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens)
         scores[f"{answer_id}_score"] = answer_score
 
     del output
-    with torch.no_grad():
-        outputs = model.generate(
-            **input_dict,
-            decoder_input_ids=additional_ids,
-            max_new_tokens=15,
-            do_sample=True,
-            temperature=0.6,
-            top_p=0.9,
-        )
-
-    scores["generated_text"] = tokenizer.decode(outputs[0, len(additional_ids[0]):]) # skip_special_tokens=True
+    # with torch.no_grad():
+    #     outputs = model.generate(
+    #         **input_dict,
+    #         decoder_input_ids=additional_ids,
+    #         max_new_tokens=15,
+    #         do_sample=True,
+    #         temperature=0.6,
+    #         top_p=0.9,
+    #     )
+    # scores["generated_text"] = tokenizer.decode(outputs[0, len(additional_ids[0]):]) # skip_special_tokens=True
     return scores
 
 def get_llama3_generated_text(model, tokenizer, messages, terminators):
@@ -168,6 +232,7 @@ def apply_multiple_choice(sample, prompt_mapping, model_name, model, tokenizer, 
 
     sys_header = prompt_mapping.get("sys_head")
     add_header = prompt_mapping.get("add_head")
+    add_header_v2 = prompt_mapping.get("add_head_v2")
 
     options = []
     for answer_id in ["A", "B", "C", "D"]:
@@ -186,10 +251,12 @@ def apply_multiple_choice(sample, prompt_mapping, model_name, model, tokenizer, 
         }, 
     ]
     if model_name.startswith("llama"):
-        answer_scores = get_llama3_letter_logits(model, tokenizer, messages, add_header, answer_tokens, terminators)  
+        answer_scores = get_llama3_letter_logits(model, tokenizer, messages, add_header, answer_tokens, terminators)
+        # answer_scores = get_llama3_average_logits(model, tokenizer, messages, add_header, add_header_v2, answer_tokens, terminators)  
     
     elif model_name.startswith("aya"):
-        answer_scores = get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens)  
+        answer_scores = get_aya_letter_logits(model, tokenizer, messages, add_header, answer_tokens) 
+        # answer_scores = get_aya_average_logits(model, tokenizer, messages, add_header, add_header_v2, answer_tokens, terminators) 
     sample.update(answer_scores)
     return sample
 
@@ -213,7 +280,7 @@ def apply_open_question(sample, prompt_mapping, model_name, model, tokenizer, de
         answer_scores = get_llama3_generated_text(model, tokenizer, messages, terminators)
     
     elif model_name.startswith("aya"):
-        answer_scores = get_aya_generated_text(model, tokenizer, messages)  
+        answer_scores = get_aya_generated_text(model, tokenizer, messages) 
     
     sample.update(answer_scores)
     return sample
@@ -369,6 +436,8 @@ def main(args):
     model.gradient_checkpointing_enable()
     
     tokenizer = AutoTokenizer.from_pretrained(model_original_path, use_auth_token=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     terminators = [
         tokenizer.eos_token_id,
