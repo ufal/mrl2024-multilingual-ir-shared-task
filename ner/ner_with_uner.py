@@ -17,25 +17,27 @@ LABEL_NAMES = ['O', 'B-PER', 'I-PER', 'B-ORG', 'I-ORG', 'B-LOC', 'I-LOC']
 
 
 def tokenize_item(sample, tokenizer: RobertaTokenizer):
-    # transform NER tags to IDs
-    label_ids = [LABEL_NAMES.index(tag) if "DATE" not in tag else 0 for tag in sample["ner_tags"]]
-
     # align label IDs with subword tokens
     tokenized = tokenizer(sample["tokens"], is_split_into_words=True, return_tensors="pt", truncation=True)
+
     word_ids = tokenized.word_ids(batch_index=0)
     previous_word_idx = None
+    # transform NER tags to IDs
+    label_ids = [LABEL_NAMES.index(tag) if "DATE" not in tag else 0 for tag in sample["ner_tags"]]
+    i = -1
     aligned_labels = []
-    for word_idx in word_ids:  # Set the special tokens to -100.
 
+    for word_idx in word_ids:  # Set the special tokens to -100.
         if word_idx is None:
             aligned_labels.append(-100)
 
-        elif word_idx != previous_word_idx:  # Only label the first token of a given word.
-            aligned_labels.append(label_ids[word_idx])
+        elif word_idx != previous_word_idx:  # Normally you'd only label the first token of a given word.
+            i = i + 1
+            aligned_labels.append(label_ids[i])
+            previous_word_idx = word_idx
 
         else:
-            aligned_labels.append(-100)  # therefore, ignore the rest of the tokens in the word.
-        previous_word_idx = word_idx
+            aligned_labels.append(label_ids[i])  # but in their training code, UNER did it for the other tokens as well.
 
     return {'input_ids': tokenized['input_ids'].squeeze(), 'attention_mask': tokenized['attention_mask'].squeeze(),
             'labels': aligned_labels}

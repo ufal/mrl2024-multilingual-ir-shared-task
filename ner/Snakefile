@@ -254,8 +254,8 @@ rule tune_uner:
         from collect_data import collect_data
         from ner_with_uner import tune_uner
 
-        train_data = collect_data("all", "train")
-        dev_data = collect_data("all", "dev")
+        train_data = collect_data(["de_DE", "tr_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "aze"], "train")
+        dev_data = collect_data(["de_DE", "tr_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "aze"], "dev")
         model_path = output.model_path
 
         tune_uner(train_data, dev_data, "universalner/uner_all", os.path.dirname(model_path))
@@ -277,10 +277,11 @@ rule tune_gliner_multi:
         from collect_data import collect_data
         from ner_with_gliner import tune_gliner
 
-        train_data = collect_data("all", "train")
-        dev_data = collect_data("all", "dev")
+        train_data = collect_data(["de_DE", "tr_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "aze"], "train")
+        dev_data = collect_data(["de_DE", "tr_polyglot", "yor_masakhaner2", "ibo_masakhaner2", "aze"], "dev")
         model_path = output.model_path
-        tune_gliner(train_data, dev_data, "urchade/gliner_multi-v2.1", os.path.dirname(model_path))
+        tune_gliner(train_data, dev_data, "urchade/gliner_multi-v2.1", os.path.dirname(model_path),
+            learning_rate=5e-6, epochs=5)
 
         with open(output.model_path, "w") as f:
             print("Done.", file=f)
